@@ -1,11 +1,8 @@
-use crate::cloud_sync::sync_type::SyncableItem;
-use crate::crypto;
 use crate::storage::traits::Entity;
 use gpui::Global;
 use gpui_component::Size::Large;
 use gpui_component::{Icon, IconName, Sizable};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashSet;
 use std::fmt;
 
@@ -122,9 +119,6 @@ pub enum DatabaseType {
     MySQL,
     PostgreSQL,
     SQLite,
-    MSSQL,
-    Oracle,
-    ClickHouse,
 }
 
 impl DatabaseType {
@@ -133,9 +127,6 @@ impl DatabaseType {
             DatabaseType::MySQL,
             DatabaseType::PostgreSQL,
             DatabaseType::SQLite,
-            DatabaseType::MSSQL,
-            DatabaseType::Oracle,
-            DatabaseType::ClickHouse,
         ]
     }
 
@@ -144,9 +135,6 @@ impl DatabaseType {
             DatabaseType::MySQL => "MySQL",
             DatabaseType::PostgreSQL => "PostgreSQL",
             DatabaseType::SQLite => "SQLite",
-            DatabaseType::MSSQL => "MSSQL",
-            DatabaseType::Oracle => "Oracle",
-            DatabaseType::ClickHouse => "ClickHouse",
         }
     }
 
@@ -155,9 +143,6 @@ impl DatabaseType {
             "MySQL" => Some(DatabaseType::MySQL),
             "PostgreSQL" => Some(DatabaseType::PostgreSQL),
             "SQLite" => Some(DatabaseType::SQLite),
-            "MSSQL" => Some(DatabaseType::MSSQL),
-            "Oracle" => Some(DatabaseType::Oracle),
-            "ClickHouse" => Some(DatabaseType::ClickHouse),
             _ => None,
         }
     }
@@ -167,9 +152,6 @@ impl DatabaseType {
             DatabaseType::MySQL => IconName::MySQLColor.color().with_size(Large),
             DatabaseType::PostgreSQL => IconName::PostgreSQLColor.color().with_size(Large),
             DatabaseType::SQLite => IconName::SQLiteColor.color().with_size(Large),
-            DatabaseType::MSSQL => IconName::MSSQLColor.color().with_size(Large),
-            DatabaseType::Oracle => IconName::OracleColor.color().with_size(Large),
-            DatabaseType::ClickHouse => IconName::ClickHouseColor.color().with_size(Large),
         }
     }
     pub fn as_node_icon(&self) -> Icon {
@@ -177,9 +159,6 @@ impl DatabaseType {
             DatabaseType::MySQL => IconName::MySQLLineColor.color().with_size(Large),
             DatabaseType::PostgreSQL => IconName::PostgreSQLLineColor.color().with_size(Large),
             DatabaseType::SQLite => IconName::SQLiteLineColor.color().with_size(Large),
-            DatabaseType::MSSQL => IconName::MSSQLLineColor.color().with_size(Large),
-            DatabaseType::Oracle => IconName::OracleLineColor.color().with_size(Large),
-            DatabaseType::ClickHouse => IconName::ClickHouseLineColor.color().with_size(Large),
         }
     }
 }
@@ -540,32 +519,6 @@ impl Workspace {
     }
 }
 
-impl SyncableItem for Workspace {
-    fn local_id(&self) -> Option<i64> {
-        self.id
-    }
-
-    fn set_local_id(&mut self, id: Option<i64>) {
-        self.id = id;
-    }
-
-    fn item_name(&self) -> &str {
-        &self.name
-    }
-
-    fn cloud_id(&self) -> Option<&str> {
-        self.cloud_id.as_deref()
-    }
-
-    fn set_cloud_id(&mut self, cloud_id: Option<String>) {
-        self.cloud_id = cloud_id;
-    }
-
-    fn updated_at(&self) -> Option<i64> {
-        self.updated_at
-    }
-}
-
 /// Stored connection with ID
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredConnection {
@@ -619,44 +572,6 @@ impl Entity for StoredConnection {
     fn updated_at(&self) -> i64 {
         self.updated_at
             .expect("updated_at 在从数据库读取后应该存在")
-    }
-}
-
-impl SyncableItem for StoredConnection {
-    fn local_id(&self) -> Option<i64> {
-        self.id
-    }
-
-    fn set_local_id(&mut self, id: Option<i64>) {
-        self.id = id;
-    }
-
-    fn item_name(&self) -> &str {
-        &self.name
-    }
-
-    fn cloud_id(&self) -> Option<&str> {
-        self.cloud_id.as_deref()
-    }
-
-    fn set_cloud_id(&mut self, cloud_id: Option<String>) {
-        self.cloud_id = cloud_id;
-    }
-
-    fn updated_at(&self) -> Option<i64> {
-        self.updated_at
-    }
-
-    fn is_sync_enabled(&self) -> bool {
-        self.sync_enabled
-    }
-
-    fn last_synced_at(&self) -> Option<i64> {
-        self.last_synced_at
-    }
-
-    fn team_id(&self) -> Option<&str> {
-        self.team_id.as_deref()
     }
 }
 
@@ -827,106 +742,15 @@ impl StoredConnection {
 }
 
 /// 递归加密 JSON 中所有名为 password 或 passphrase 的字符串字段
+/// 注意：已移除主密钥加密，密码现在明文存储
 fn encrypt_json_passwords(json_str: &str) -> String {
-    match serde_json::from_str::<Value>(json_str) {
-        Ok(mut value) => {
-            encrypt_value(&mut value);
-            serde_json::to_string(&value).unwrap_or_else(|_| json_str.to_string())
-        }
-        Err(_) => json_str.to_string(),
-    }
+    json_str.to_string()
 }
 
 /// 递归解密 JSON 中所有名为 password 或 passphrase 的字符串字段
+/// 注意：已移除主密钥解密，密码现在明文存储
 fn decrypt_json_passwords(json_str: &str) -> String {
-    match serde_json::from_str::<Value>(json_str) {
-        Ok(mut value) => {
-            decrypt_value(&mut value);
-            serde_json::to_string(&value).unwrap_or_else(|_| json_str.to_string())
-        }
-        Err(_) => json_str.to_string(),
-    }
-}
-
-/// 判断字段名是否为敏感字段
-fn is_sensitive_field(key: &str) -> bool {
-    key == "password"
-        || key == "passphrase"
-        || key.ends_with("_password")
-        || key.ends_with("_passphrase")
-}
-
-/// 递归遍历 JSON Value，加密敏感字段
-fn encrypt_value(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            for (key, val) in map.iter_mut() {
-                if is_sensitive_field(key) {
-                    if let Value::String(s) = val {
-                        *s = crypto::encrypt_password(s);
-                    }
-                } else {
-                    encrypt_value(val);
-                }
-            }
-        }
-        Value::Array(arr) => {
-            for item in arr.iter_mut() {
-                encrypt_value(item);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// 递归遍历 JSON Value，解密敏感字段
-fn decrypt_value(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            for (key, val) in map.iter_mut() {
-                if is_sensitive_field(key) {
-                    if let Value::String(s) = val {
-                        *s = crypto::decrypt_password(s);
-                    }
-                } else {
-                    decrypt_value(val);
-                }
-            }
-        }
-        Value::Array(arr) => {
-            for item in arr.iter_mut() {
-                decrypt_value(item);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// 检测 params 中是否存在“已加密字段解密失败”的情况。
-///
-/// 规则：敏感字段（password/passphrase）若以 ENC: 开头，且解密结果为空，视为失败。
-pub fn has_decrypt_failure_in_sensitive_fields(json_str: &str) -> bool {
-    match serde_json::from_str::<Value>(json_str) {
-        Ok(value) => has_decrypt_failure_in_value(&value),
-        Err(_) => false,
-    }
-}
-
-fn has_decrypt_failure_in_value(value: &Value) -> bool {
-    match value {
-        Value::Object(map) => map.iter().any(|(key, val)| {
-            if is_sensitive_field(key) {
-                if let Value::String(s) = val {
-                    return crypto::is_encrypted(s) && crypto::decrypt_password(s).is_empty();
-                }
-                false
-            } else {
-                has_decrypt_failure_in_value(val)
-            }
-        }),
-        Value::Array(arr) => arr.iter().any(has_decrypt_failure_in_value),
-        _ => false,
-    }
+    json_str.to_string()
 }
 
 /// Generic key-value storage model

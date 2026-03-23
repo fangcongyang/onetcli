@@ -97,7 +97,7 @@ where
     cx.spawn(async move |cx| {
         let window_opts = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: Some(TitleBar::title_bar_options()),
+            titlebar: Some(TitleBar::title_bar_options_for_popup()),
             window_min_size: Some(Size {
                 width: px(options.min_width),
                 height: px(options.min_height),

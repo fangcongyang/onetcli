@@ -4,21 +4,22 @@ rust_i18n::i18n!("locales", fallback = "zh-CN");
 
 pub mod agent;
 pub mod ai_chat;
-pub mod cloud_sync;
+pub mod cloud_api;
 pub mod config;
 pub mod connection_notifier;
-pub mod crypto;
 pub mod gpui_tokio;
-pub mod key_storage;
 pub mod layout;
-pub mod license;
 pub mod llm;
 pub mod popup_window;
 pub mod storage;
 pub mod tab_container;
 pub mod tab_persistence;
 pub mod themes;
+pub mod user_state;
 pub mod utils;
+
+pub use crate::cloud_api::CloudApiClient;
+pub use crate::user_state::{GlobalUserState, TeamOption, UserInfo};
 
 pub use crate::agent::{
     Agent, AgentContext, AgentDescriptor, AgentDispatcher, AgentEvent, AgentRegistry, AgentResult,

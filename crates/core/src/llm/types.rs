@@ -92,7 +92,7 @@ impl ProviderType {
 
     /// 是否为内置 provider（不需要用户配置）
     pub fn is_builtin(&self) -> bool {
-        matches!(self, ProviderType::OnetCli)
+        false
     }
 
     /// 返回用户可配置的 provider 类型列表（不包含内置类型）

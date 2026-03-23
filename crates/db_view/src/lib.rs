@@ -1,7 +1,6 @@
 rust_i18n::i18n!("locales", fallback = "en");
 
 pub mod chatdb;
-pub mod clickhouse;
 pub mod common;
 pub mod connection_form_window;
 pub mod database_objects_tab;
@@ -10,9 +9,7 @@ pub mod database_view_plugin;
 mod db_tree_event;
 pub mod db_tree_view;
 mod import_export;
-pub mod mssql;
 pub mod mysql;
-pub mod oracle;
 pub mod postgresql;
 mod sidebar;
 pub mod sql_editor;

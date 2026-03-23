@@ -27,7 +27,7 @@ use gpui_component::{
     v_flex,
 };
 use rust_i18n::t;
-use tracing::log::{error, info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 // 3. 当前 crate 导入（按模块分组）
 use crate::database_view_plugin::DatabaseViewPluginRegistry;

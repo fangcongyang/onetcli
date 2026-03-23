@@ -46,6 +46,18 @@ impl TitleBar {
         }
     }
 
+    /// Returns title bar options for popup windows.
+    /// Unlike regular windows, popup windows should have opaque title bars
+    /// so traffic lights appear in the correct position.
+    #[cfg(target_os = "macos")]
+    pub fn title_bar_options_for_popup() -> TitlebarOptions {
+        TitlebarOptions {
+            title: None,
+            appears_transparent: false,
+            traffic_light_position: Some(gpui::point(px(9.0), px(9.0))),
+        }
+    }
+
     /// Add custom for close window event, default is None, then click X button will call `window.remove_window()`.
     /// Linux only, this will do nothing on other platforms.
     pub fn on_close_window(

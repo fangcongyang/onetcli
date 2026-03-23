@@ -181,6 +181,22 @@ ConnectionForm:
     en: SSL
     zh-CN: SSL
     zh-HK: SSL
+  sslmode:
+    en: SSL Mode
+    zh-CN: SSL 模式
+    zh-HK: SSL 模式
+  sslmode_disable:
+    en: Disable (No TLS)
+    zh-CN: 禁用（不使用 TLS）
+    zh-HK: 停用（不使用 TLS）
+  sslmode_prefer:
+    en: Prefer (Try TLS, fallback to plain)
+    zh-CN: 优先（尝试 TLS，失败则使用明文）
+    zh-HK: 優先（嘗試 TLS，失敗則使用明文）
+  sslmode_require:
+    en: Require (Force TLS)
+    zh-CN: 必须（强制使用 TLS）
+    zh-HK: 必須（強制使用 TLS）
   ssh:
     en: SSH
     zh-CN: SSH

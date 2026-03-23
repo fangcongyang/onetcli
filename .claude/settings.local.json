@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build:*)",
+      "Bash(grep -B2 \"could not find \\\\`clickhouse\\\\`\")",
+      "Bash(grep -B3 \"unresolved module or unlinked crate \\\\`oracle\\\\`\")",
+      "Bash(git checkout:*)",
+      "Bash(cargo clean:*)"
+    ]
+  }
+}

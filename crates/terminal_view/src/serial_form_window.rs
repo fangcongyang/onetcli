@@ -5,13 +5,12 @@ use gpui::{
 };
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    checkbox::Checkbox,
     h_flex,
     input::{Input, InputState},
     select::{Select, SelectItem, SelectState},
     v_flex, ActiveTheme, Disableable, IndexPath, Sizable, TitleBar,
 };
-use one_core::cloud_sync::{GlobalCloudUser, TeamOption};
+use one_core::{GlobalUserState, TeamOption};
 use one_core::connection_notifier::{get_notifier, ConnectionDataEvent};
 use one_core::storage::traits::Repository;
 use one_core::storage::{
@@ -217,7 +216,6 @@ pub struct SerialFormWindow {
     workspace_select: Entity<SelectState<Vec<WorkspaceSelectItem>>>,
     team_select: Entity<SelectState<Vec<TeamSelectItem>>>,
     remark_input: Entity<InputState>,
-    sync_enabled: bool,
 
     is_testing: bool,
     test_result: Option<Result<(), String>>,
@@ -358,14 +356,11 @@ impl SerialFormWindow {
         let team_select =
             cx.new(|cx| SelectState::new(team_items, Some(Default::default()), window, cx));
 
-        let mut sync_enabled = true;
         let mut workspace_id: Option<i64> = None;
         let mut team_id: Option<String> = None;
 
         // 编辑模式：加载已有数据
         if let Some(ref conn) = config.editing_connection {
-            sync_enabled = conn.sync_enabled;
-
             if let Ok(params) = conn.to_serial_params() {
                 name_input.update(cx, |s, cx| s.set_value(&conn.name, window, cx));
                 port_name_input.update(cx, |s, cx| s.set_value(&params.port_name, window, cx));
@@ -427,7 +422,6 @@ impl SerialFormWindow {
             workspace_select,
             team_select,
             remark_input,
-            sync_enabled,
             is_testing: false,
             test_result: None,
         }
@@ -587,10 +581,9 @@ impl SerialFormWindow {
 
         let workspace_id = self.get_workspace_id(cx);
         let mut conn = StoredConnection::new_serial(name, params, workspace_id);
-        conn.sync_enabled = self.sync_enabled;
         conn.team_id = self.get_team_id(cx);
         if !self.is_editing {
-            conn.owner_id = GlobalCloudUser::get_user(cx).map(|u| u.id);
+            conn.owner_id = GlobalUserState::get_user(cx).map(|u| u.id);
         }
         if self.is_editing {
             conn.id = self.editing_id;
@@ -797,34 +790,10 @@ impl Render for SerialFormWindow {
                             ))
 
                             .child(self.render_form_row(
-                                &t!("TeamSync.team_label"),
-                                Select::new(&self.team_select).w_full(),
-                            ))
-                            .child(
-                                self.render_form_row(
-                                    &t!("ConnectionForm.cloud_sync"),
-                                    h_flex()
-                                        .gap_2()
-                                        .child(
-                                            Checkbox::new("sync-enabled")
-                                                .checked(self.sync_enabled)
-                                                .on_click(cx.listener(|this, _, _, cx| {
-                                                    this.sync_enabled = !this.sync_enabled;
-                                                    cx.notify();
-                                                })),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(
-                                                    t!("ConnectionForm.cloud_sync_desc")
-                                                        .to_string(),
-                                                ),
-                                        ),
-                                ),
-                            )
-                            .child(self.render_form_row(
+                            &t!("TeamSync.team_label"),
+                            Select::new(&self.team_select).w_full(),
+                        ))
+                        .child(self.render_form_row(
                                 &t!("Serial.remark"),
                                 Input::new(&self.remark_input),
                             )),

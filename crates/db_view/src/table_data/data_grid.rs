@@ -10,7 +10,7 @@ use gpui_component::{
 };
 use one_ui::edit_table::{Column, EditTable, EditTableEvent, EditTableState};
 use rust_i18n::t;
-use tracing::{error, log::trace};
+use tracing::{error, trace};
 
 use crate::import_export::table_export_view::DataExportView;
 use crate::sql_editor::SqlEditor;

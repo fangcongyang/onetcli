@@ -1,5 +1,5 @@
 use crate::{
-    IconName, Sizable, Size, StyledExt,
+    Icon, IconName, Sizable, Size, StyledExt,
     group_box::GroupBoxVariant,
     input::{Input, InputState},
     resizable::{h_resizable, resizable_panel},
@@ -175,6 +175,7 @@ impl Settings {
                     let is_page_active =
                         selected_index.page_ix == page_ix && selected_index.group_ix.is_none();
                     SidebarMenuItem::new(page.title.clone())
+                        .icon(Icon::new(page.icon.clone().unwrap_or(IconName::Settings)).size_4())
                         .default_open(page.default_open)
                         .active(is_page_active)
                         .on_click({

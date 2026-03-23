@@ -3,6 +3,10 @@ name = "db"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["postgres-tls"]
+postgres-tls = ["dep:postgres-native-tls", "dep:native-tls"]
+
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
@@ -17,10 +21,9 @@ gpui-component.workspace = true
 chrono.workspace = true
 mysql_async.workspace = true
 tokio-postgres.workspace = true
-tiberius.workspace = true
+postgres-native-tls = { workspace = true, optional = true }
+native-tls = { workspace = true, optional = true }
 tokio-util = { workspace = true, features = ["compat"] }
-oracle.workspace = true
-clickhouse.workspace = true
 one-core.workspace = true
 ssh.workspace = true
 sqlformat.workspace = true

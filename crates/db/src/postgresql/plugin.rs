@@ -1307,7 +1307,7 @@ impl DatabasePlugin for PostgresPlugin {
     }
 
     fn build_limit_clause(&self) -> String {
-        " LIMIT 1".to_string()
+        String::new()
     }
 
     fn build_where_and_limit_clause(

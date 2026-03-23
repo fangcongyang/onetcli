@@ -16,7 +16,7 @@ use gpui_component::{
     tab::{Tab, TabBar},
     v_flex,
 };
-use one_core::cloud_sync::{GlobalCloudUser, TeamOption};
+use one_core::{GlobalUserState, TeamOption};
 use one_core::connection_notifier::{ConnectionDataEvent, get_notifier};
 use one_core::gpui_tokio::Tokio;
 use one_core::storage::traits::Repository;
@@ -131,7 +131,6 @@ pub struct MongoFormWindow {
     workspace_select: Entity<SelectState<Vec<WorkspaceSelectItem>>>,
     team_select: Entity<SelectState<Vec<TeamSelectItem>>>,
     remark_input: Entity<InputState>,
-    sync_enabled: bool,
 
     is_testing: bool,
     test_result: Option<Result<(), String>>,
@@ -352,12 +351,6 @@ impl MongoFormWindow {
             state
         });
 
-        let sync_enabled = config
-            .editing_connection
-            .as_ref()
-            .map(|connection| connection.sync_enabled)
-            .unwrap_or(true);
-
         let use_srv_record = existing_parameters
             .as_ref()
             .map(|parameters| parameters.use_srv_record)
@@ -396,7 +389,6 @@ impl MongoFormWindow {
             workspace_select,
             team_select,
             remark_input,
-            sync_enabled,
             is_testing: false,
             test_result: None,
         }
@@ -590,7 +582,7 @@ impl MongoFormWindow {
         let workspace_id = self.get_workspace_id(cx);
         let team_id = self.get_team_id(cx);
         let owner_id = if !self.is_editing {
-            GlobalCloudUser::get_user(cx).map(|u| u.id)
+            GlobalUserState::get_user(cx).map(|u| u.id)
         } else {
             None
         };
@@ -598,7 +590,6 @@ impl MongoFormWindow {
             let value = self.remark_input.read(cx).text().to_string();
             if value.is_empty() { None } else { Some(value) }
         };
-        let sync_enabled = self.sync_enabled;
         let is_editing = self.is_editing;
         let editing_id = self.editing_id;
         let editing_cloud_id = self.editing_cloud_id.clone();
@@ -616,7 +607,6 @@ impl MongoFormWindow {
                     .ok_or_else(|| anyhow::anyhow!("ConnectionRepository not found"))?;
 
                 let mut connection = StoredConnection::new_mongodb(name, parameters, workspace_id);
-                connection.sync_enabled = sync_enabled;
                 connection.remark = remark;
                 connection.team_id = team_id;
                 if !is_editing {
@@ -681,7 +671,7 @@ impl MongoFormWindow {
             .child(div().flex_1().child(child))
     }
 
-    fn render_basic_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_basic_tab(&self, _cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .gap_2()
             .child(self.render_form_row(
@@ -720,27 +710,6 @@ impl MongoFormWindow {
                 t!("TeamSync.team_label").as_ref(),
                 Select::new(&self.team_select).w_full(),
             ))
-            .child(
-                self.render_form_row(
-                    t!("MongoForm.cloud_sync_label").as_ref(),
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Checkbox::new("mongo-sync-enabled")
-                                .checked(self.sync_enabled)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.sync_enabled = !this.sync_enabled;
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(t!("MongoForm.cloud_sync_enabled").to_string()),
-                        ),
-                ),
-            )
     }
 
     fn render_cluster_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {

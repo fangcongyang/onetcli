@@ -3067,7 +3067,7 @@ impl Render for TableOptionsEditor {
 mod tests {
     use super::*;
     use db::{
-        clickhouse::ClickHousePlugin, mssql::MsSqlPlugin, mysql::MySqlPlugin, oracle::OraclePlugin,
+        mysql::MySqlPlugin,
         plugin::DatabasePlugin, postgresql::PostgresPlugin, sqlite::SqlitePlugin,
     };
 
@@ -3112,9 +3112,6 @@ mod tests {
             DatabaseType::MySQL => Box::new(MySqlPlugin::new()),
             DatabaseType::PostgreSQL => Box::new(PostgresPlugin::new()),
             DatabaseType::SQLite => Box::new(SqlitePlugin::new()),
-            DatabaseType::MSSQL => Box::new(MsSqlPlugin::new()),
-            DatabaseType::Oracle => Box::new(OraclePlugin::new()),
-            DatabaseType::ClickHouse => Box::new(ClickHousePlugin::new()),
         }
     }
 
@@ -3152,24 +3149,6 @@ mod tests {
                 assert!(
                     sql.contains("RENAME COLUMN \"b\" TO \"a\""),
                     "SQLite 应使用 RENAME COLUMN: {sql}"
-                );
-            }
-            DatabaseType::MSSQL => {
-                assert!(
-                    sql.contains("EXEC sp_rename '[users].[b]', 'a', 'COLUMN';"),
-                    "MSSQL 应使用 sp_rename COLUMN: {sql}"
-                );
-            }
-            DatabaseType::Oracle => {
-                assert!(
-                    sql.contains("RENAME COLUMN \"b\" TO \"a\""),
-                    "Oracle 应使用 RENAME COLUMN: {sql}"
-                );
-            }
-            DatabaseType::ClickHouse => {
-                assert!(
-                    sql.contains("RENAME COLUMN `b` TO `a`"),
-                    "ClickHouse 应使用 RENAME COLUMN: {sql}"
                 );
             }
         }

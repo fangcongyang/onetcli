@@ -42,7 +42,7 @@ use gpui_component::{
 };
 use one_core::agent::registry::AgentRegistry;
 use one_core::agent::{AgentContext, AgentDispatcher, AgentEvent, SessionAffinity};
-use one_core::cloud_sync::GlobalCloudUser;
+use one_core::GlobalUserState;
 use one_core::gpui_tokio::Tokio;
 use one_core::llm::{
     Message, ProviderConfig, Role,
@@ -225,7 +225,7 @@ impl ChatPanel {
             render_limit: MESSAGE_RENDER_LIMIT,
             is_at_bottom: true,
             is_new_session: false,
-            is_logged_in: GlobalCloudUser::is_logged_in(cx),
+            is_logged_in: GlobalUserState::is_logged_in(cx),
             model_settings: ModelSettings::default(),
             cancel_token: None,
             last_user_input: None,
@@ -245,7 +245,7 @@ impl ChatPanel {
     // ========================================================================
 
     fn load_providers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let is_logged_in = GlobalCloudUser::is_logged_in(cx);
+        let is_logged_in = GlobalUserState::is_logged_in(cx);
         self.is_logged_in = is_logged_in;
 
         let repo = match self.storage_manager.get::<ProviderRepository>() {
@@ -2095,7 +2095,7 @@ impl SessionListHost for ChatPanel {
 
 impl Render for ChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_logged_in = GlobalCloudUser::is_logged_in(cx);
+        let is_logged_in = GlobalUserState::is_logged_in(cx);
         if is_logged_in != self.is_logged_in {
             self.is_logged_in = is_logged_in;
             self.load_providers(window, cx);

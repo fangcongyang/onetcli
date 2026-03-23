@@ -1,5 +1,5 @@
 use crate::home_tab::HomePage;
-use crate::setting_tab::{AppSettings, DatabaseOpenMode, SettingsPanel};
+use crate::setting_tab::{AppSettings, DatabaseOpenMode};
 use db_view::chatdb::chat_panel::ChatPanel;
 use db_view::database_tab::DatabaseTabView;
 use gpui::AppContext;
@@ -522,23 +522,6 @@ impl HomePage {
                             )
                         });
                         TabItem::new(tab_id_for_tab, "mongodb", mongo_view)
-                    },
-                    window,
-                    cx,
-                );
-            });
-        });
-    }
-
-    pub(crate) fn add_settings_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let tab_container = self.tab_container.clone();
-        window.defer(cx, move |window, cx| {
-            tab_container.update(cx, |tc, cx| {
-                tc.activate_or_add_tab_lazy(
-                    "settings",
-                    |win, cx| {
-                        let settings = cx.new(|cx| SettingsPanel::new(win, cx));
-                        TabItem::new("settings", "home", settings)
                     },
                     window,
                     cx,

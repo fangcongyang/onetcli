@@ -1,13 +1,10 @@
 use crate::cache::CacheContext;
 use crate::cache_manager::GlobalNodeCache;
-use crate::clickhouse::ClickHousePlugin;
 use crate::connection::{DbConnection, DbError, StreamingProgress};
 use crate::import_export::{
     ExportConfig, ExportProgressSender, ExportResult, ImportConfig, ImportResult,
 };
-use crate::mssql::MsSqlPlugin;
 use crate::mysql::MySqlPlugin;
-use crate::oracle::OraclePlugin;
 use crate::plugin::DatabasePlugin;
 use crate::postgresql::PostgresPlugin;
 use crate::sqlite::SqlitePlugin;
@@ -128,9 +125,6 @@ pub struct DbManager {
     mysql: Arc<dyn DatabasePlugin>,
     postgresql: Arc<dyn DatabasePlugin>,
     sqlite: Arc<dyn DatabasePlugin>,
-    clickhouse: Arc<dyn DatabasePlugin>,
-    mssql: Arc<dyn DatabasePlugin>,
-    oracle: Arc<dyn DatabasePlugin>,
 }
 
 impl DbManager {
@@ -139,9 +133,6 @@ impl DbManager {
             mysql: Arc::new(MySqlPlugin::new()),
             postgresql: Arc::new(PostgresPlugin::new()),
             sqlite: Arc::new(SqlitePlugin::new()),
-            clickhouse: Arc::new(ClickHousePlugin::new()),
-            mssql: Arc::new(MsSqlPlugin::new()),
-            oracle: Arc::new(OraclePlugin::new()),
         }
     }
 
@@ -150,9 +141,6 @@ impl DbManager {
             DatabaseType::MySQL => Ok(Arc::clone(&self.mysql)),
             DatabaseType::PostgreSQL => Ok(Arc::clone(&self.postgresql)),
             DatabaseType::SQLite => Ok(Arc::clone(&self.sqlite)),
-            DatabaseType::ClickHouse => Ok(Arc::clone(&self.clickhouse)),
-            DatabaseType::MSSQL => Ok(Arc::clone(&self.mssql)),
-            DatabaseType::Oracle => Ok(Arc::clone(&self.oracle)),
         }
     }
 }
@@ -169,9 +157,6 @@ impl Clone for DbManager {
             mysql: Arc::clone(&self.mysql),
             postgresql: Arc::clone(&self.postgresql),
             sqlite: Arc::clone(&self.sqlite),
-            clickhouse: Arc::clone(&self.clickhouse),
-            mssql: Arc::clone(&self.mssql),
-            oracle: Arc::clone(&self.oracle),
         }
     }
 }
@@ -359,13 +344,7 @@ impl ConnectionManager {
     }
 
     fn db_equals(db1: &DbConnectionConfig, db2: &DbConnectionConfig) -> bool {
-        match db1.database_type {
-            DatabaseType::Oracle => {
-                (db1.sid.is_some() && db1.sid == db2.sid)
-                    || (db1.service_name.is_some() && db1.service_name == db2.service_name)
-            }
-            _ => db1.database.is_some() && db1.database == db2.database,
-        }
+        db1.database.is_some() && db1.database == db2.database
     }
 
     /// Try to acquire an existing idle session with matching database
@@ -762,10 +741,7 @@ impl GlobalDbState {
         let plugin = self.get_plugin(&config.database_type)?;
         let sql = plugin.drop_table(&database, schema.as_deref(), &table_name);
 
-        // For non-Oracle databases, modify config.database to switch database
-        if config.database_type != DatabaseType::Oracle {
-            config.database = Some(database);
-        }
+        config.database = Some(database);
 
         // Pass schema to switch before executing
         let result = self
@@ -927,11 +903,8 @@ impl GlobalDbState {
         // Schema to switch before executing
         let schema_to_switch = schema;
 
-        // For non-Oracle databases, modify config.database to switch database
-        if config.database_type != DatabaseType::Oracle {
-            if let Some(db) = database {
-                config.database = Some(db);
-            }
+        if let Some(db) = database {
+            config.database = Some(db);
         }
 
         self.execute_with_session_internal(cx, config, script, opts, schema_to_switch)
@@ -1088,10 +1061,8 @@ impl GlobalDbState {
 
         let schema_to_switch = schema;
 
-        if config.database_type != DatabaseType::Oracle {
-            if let Some(db) = database {
-                config.database = Some(db);
-            }
+        if let Some(db) = database {
+            config.database = Some(db);
         }
 
         let mut opts = opts.unwrap_or_default();
@@ -1488,7 +1459,7 @@ impl GlobalDbState {
             .unwrap_or(false)
     }
 
-    /// Check if database type uses schemas as top-level nodes (like Oracle)
+    /// Check if database type uses schemas as top-level nodes
     pub fn uses_schema_as_database(&self, database_type: &DatabaseType) -> bool {
         self.db_manager
             .get_plugin(database_type)
@@ -2225,11 +2196,8 @@ impl GlobalDbState {
             .ok_or_else(|| anyhow::anyhow!("Connection not found: {}", connection_id))?
             .clone();
 
-        // For non-Oracle databases, switch database through config override.
-        if config.database_type != DatabaseType::Oracle {
-            if let Some(db) = database {
-                config.database = Some(db);
-            }
+        if let Some(db) = database {
+            config.database = Some(db);
         }
 
         let plugin = self.get_plugin(&config.database_type)?;

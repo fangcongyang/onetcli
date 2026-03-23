@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
-use tracing::log::error;
+use tracing::error;
 
 const PANEL_MIN_SIZE: Pixels = px(100.0);
 const RESULT_PANEL_DEFAULT_SIZE: Pixels = px(400.0);
@@ -657,19 +657,11 @@ impl SqlEditorTab {
     fn build_explain_statement(database_type: DatabaseType, sql: &str) -> String {
         let sql = sql.trim();
         match database_type {
-            DatabaseType::MySQL | DatabaseType::PostgreSQL | DatabaseType::ClickHouse => {
+            DatabaseType::MySQL | DatabaseType::PostgreSQL => {
                 format!("EXPLAIN {sql}")
             }
             DatabaseType::SQLite => {
                 format!("EXPLAIN QUERY PLAN {sql}")
-            }
-            DatabaseType::MSSQL => {
-                format!("SET SHOWPLAN_TEXT ON;\n{sql}\nSET SHOWPLAN_TEXT OFF;")
-            }
-            DatabaseType::Oracle => {
-                format!(
-                    "EXPLAIN PLAN FOR {sql};\nSELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())"
-                )
             }
         }
     }
@@ -705,11 +697,7 @@ impl SqlEditorTab {
 
     fn build_explain_sql(database_type: DatabaseType, sql: &str) -> Option<String> {
         let statements = Self::split_sql_statements(database_type, sql);
-        let separator = if matches!(database_type, DatabaseType::MSSQL) {
-            "\n"
-        } else {
-            ";\n"
-        };
+        let separator = ";\n";
 
         let explain_statements = statements
             .into_iter()
@@ -1308,14 +1296,6 @@ mod tests {
         assert_eq!(
             SqlEditorTab::build_explain_sql(DatabaseType::SQLite, "select * from users"),
             Some("EXPLAIN QUERY PLAN select * from users".to_string())
-        );
-    }
-
-    #[test]
-    fn test_build_explain_sql_mssql() {
-        assert_eq!(
-            SqlEditorTab::build_explain_sql(DatabaseType::MSSQL, "select * from users"),
-            Some("SET SHOWPLAN_TEXT ON;\nselect * from users\nSET SHOWPLAN_TEXT OFF;".to_string())
         );
     }
 

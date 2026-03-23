@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use db_view::connection_form_window::{ConnectionFormWindow, ConnectionFormWindowConfig};
 use gpui::prelude::FluentBuilder;
@@ -12,7 +11,7 @@ use gpui::{
 use gpui_component::button::{ButtonCustomVariant, ButtonVariant};
 use gpui_component::menu::DropdownMenu;
 use gpui_component::{
-    ActiveTheme, Disableable, Icon, IconName, InteractiveElementExt, Sizable, Size, WindowExt,
+    ActiveTheme, Icon, IconName, InteractiveElementExt, Sizable, Size, WindowExt,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     h_flex,
@@ -24,19 +23,12 @@ use gpui_component::{
     v_flex,
 };
 use mongodb_view::{MongoFormWindow, MongoFormWindowConfig};
-use one_core::cloud_sync::{
-    CloudApiClient, CloudSyncService, ConflictResolution, SyncConflict, SyncEngine, UserInfo,
-    can_edit_connection, get_cached_team_options,
-};
 use one_core::connection_notifier::{ConnectionDataEvent, emit_connection_event, get_notifier};
-use one_core::crypto;
-use one_core::key_storage;
-use one_core::license::Feature;
 use one_core::popup_window::{PopupWindowOptions, open_popup_window};
 use one_core::storage::traits::Repository;
 use one_core::storage::{
     ActiveConnections, ConnectionRepository, ConnectionType, DatabaseType, GlobalStorageState,
-    PendingCloudDeletionRepository, RedisMode, StoredConnection, Workspace, WorkspaceRepository,
+    RedisMode, StoredConnection, Workspace, WorkspaceRepository,
 };
 use one_core::tab_container::{TabContainer, TabContent, TabContentEvent};
 use redis_view::{RedisFormWindow, RedisFormWindowConfig};
@@ -45,17 +37,21 @@ use terminal_view::TerminalView;
 use terminal_view::{SerialFormWindow, SerialFormWindowConfig};
 use terminal_view::{SshFormWindow, SshFormWindowConfig};
 
-use crate::auth::{AuthService, show_auth_dialog};
-use crate::encourage::EncourageDialog;
 use crate::home::home_connection_quick_open::ConnectionQuickOpenDelegate;
 use crate::home::home_new_connection::NewConnectionDelegate;
 use crate::home::home_strategy::build_connection_open_strategy;
 use crate::home::home_workspace_filter::WorkspaceFilterDelegate;
-use crate::license::{get_license_service, is_feature_enabled, show_upgrade_dialog};
-use crate::setting_tab::GlobalCurrentUser;
-use crate::user_avatar::render_user_avatar;
 
 actions!(home_tab, [OpenConnectionQuickOpen, NewConnectionShortcut]);
+
+fn get_cached_team_options(_cx: &App) -> Vec<one_core::TeamOption> {
+    Vec::new()
+}
+
+/// 检查用户是否可以编辑连接（简化版本，云同步移除后始终返回 true）
+fn can_edit_connection(_conn: &StoredConnection, _cx: &App) -> bool {
+    true
+}
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([
@@ -88,24 +84,6 @@ pub struct HomePage {
     workspace_filter_list: Option<Entity<ListState<WorkspaceFilterDelegate>>>,
     pub(crate) _subscriptions: Vec<Subscription>,
     pub(crate) terminal_views: Vec<WeakEntity<TerminalView>>,
-    /// 云同步服务
-    cloud_sync_service: Arc<std::sync::RwLock<CloudSyncService>>,
-    /// 云端加载错误信息
-    cloud_error: Option<String>,
-    /// 是否正在同步
-    syncing: bool,
-    /// 同步期间收到的新同步请求
-    sync_requested: bool,
-    /// 待处理的同步冲突
-    pending_conflicts: Vec<SyncConflict>,
-    /// 认证服务
-    auth_service: Arc<AuthService>,
-    /// 当前登录用户
-    current_user: Option<UserInfo>,
-    /// 是否正在登录
-    logging_in: bool,
-    /// 认证错误消息（登录/注册失败时设置）
-    auth_error: Option<String>,
 }
 
 impl HomePage {
@@ -154,38 +132,15 @@ impl HomePage {
             workspace_filter_list: None,
             _subscriptions: Vec::new(),
             terminal_views: Vec::new(),
-            cloud_sync_service: Arc::new(std::sync::RwLock::new(CloudSyncService::new())),
-            cloud_error: None,
-            syncing: false,
-            sync_requested: false,
-            pending_conflicts: Vec::new(),
-            auth_service: crate::auth::get_auth_service(cx),
-            current_user: None,
-            logging_in: false,
-            auth_error: None,
         };
 
         // 异步加载工作区
         page.load_workspaces(cx);
 
-        // 尝试从存储后端恢复主密钥
-        let key_restored = crypto::try_restore_master_key();
-        if key_restored {
-            tracing::info!("已恢复主密钥");
-        } else if crypto::has_repo_password_set() {
-            // 有验证文件但恢复失败，提示用户需要重新输入密钥
-            tracing::warn!("密钥恢复失败，需要用户重新输入主密钥");
-        } else {
-            tracing::info!("首次使用，需要设置主密钥");
-        }
-
-        // 在恢复主密钥后再加载连接，避免解密阶段出现空密码
+        // 加载连接
         page.load_connections(cx);
 
-        // 尝试恢复登录会话
-        page.try_restore_session(cx);
-
-        // 订阅全局连接事件，当连接创建/更新时刷新列表并自动同步
+        // 订阅全局连接事件，当连接创建/更新时刷新列表
         if let Some(notifier) = get_notifier(cx) {
             cx.subscribe(
                 &notifier,
@@ -196,11 +151,7 @@ impl HomePage {
                         cx.notify();
                         // 然后异步重新加载以确保数据一致性
                         this.load_connections(cx);
-                        // 如果已登录且密钥已解锁，自动触发同步
-                        if this.current_user.is_some() && crypto::has_master_key() {
-                            tracing::info!("连接数据变化，自动触发云同步");
-                            this.trigger_sync(cx);
-                        }
+                        // 云同步已禁用
                     }
                     ConnectionDataEvent::ConnectionUpdated { connection } => {
                         // 立即更新列表中的连接，避免异步加载的时序问题
@@ -215,11 +166,7 @@ impl HomePage {
                         cx.notify();
                         // 然后异步重新加载以确保数据一致性
                         this.load_connections(cx);
-                        // 如果已登录且密钥已解锁，自动触发同步
-                        if this.current_user.is_some() && crypto::has_master_key() {
-                            tracing::info!("连接数据变化，自动触发云同步");
-                            this.trigger_sync(cx);
-                        }
+                        // 云同步已禁用
                     }
                     ConnectionDataEvent::ConnectionDeleted { connection_id } => {
                         // 立即从列表中移除连接
@@ -227,21 +174,12 @@ impl HomePage {
                         cx.notify();
                         // 然后异步重新加载以确保数据一致性
                         this.load_connections(cx);
-                        // 如果已登录且密钥已解锁，自动触发同步
-                        if this.current_user.is_some() && crypto::has_master_key() {
-                            tracing::info!("连接数据变化，自动触发云同步");
-                            this.trigger_sync(cx);
-                        }
+                        // 云同步已禁用
                     }
                     ConnectionDataEvent::WorkspaceCreated { .. }
                     | ConnectionDataEvent::WorkspaceUpdated { .. }
                     | ConnectionDataEvent::WorkspaceDeleted { .. } => {
                         this.load_workspaces(cx);
-                        // 如果已登录且密钥已解锁，自动触发同步
-                        if this.current_user.is_some() && crypto::has_master_key() {
-                            tracing::info!("工作区数据变化，自动触发云同步");
-                            this.trigger_sync(cx);
-                        }
                     }
                     ConnectionDataEvent::SchemaChanged { .. } => {
                         // SchemaChanged 由 db_tree_view 处理，此处无需操作
@@ -307,519 +245,6 @@ impl HomePage {
     fn refresh_local_home_data(&mut self, cx: &mut Context<Self>) {
         self.load_workspaces(cx);
         self.load_connections(cx);
-    }
-
-    /// 触发云端同步
-    ///
-    /// 使用 SyncEngine 执行同步，包括：
-    /// 1. 检查密钥状态，如果未解锁则自动弹出输入对话框
-    /// 2. 计算同步计划（上传、下载、冲突检测）
-    /// 3. 执行同步操作
-    /// 4. 更新本地状态
-    fn trigger_sync(&mut self, cx: &mut Context<Self>) {
-        // 检查 License
-        if !is_feature_enabled(Feature::CloudSync, cx) {
-            tracing::debug!("云同步功能需要 Pro 订阅");
-            return;
-        }
-
-        if self.current_user.is_none() {
-            self.cloud_error = Some(t!("Home.cloud_need_login").to_string());
-            cx.notify();
-            return;
-        }
-
-        if !self.pending_conflicts.is_empty() {
-            self.cloud_error = Some(
-                t!(
-                    "Home.conflict_tooltip",
-                    count = self.pending_conflicts.len()
-                )
-                .to_string(),
-            );
-            cx.notify();
-            return;
-        }
-
-        let storage = cx.global::<GlobalStorageState>().storage.clone();
-        self.log_sync_decrypt_health(&storage, "常规同步");
-
-        if self.syncing {
-            self.sync_requested = true;
-            return;
-        }
-
-        self.syncing = true;
-        self.sync_requested = false;
-        self.cloud_error = None;
-        cx.notify();
-
-        let cloud_client = self.auth_service.cloud_client();
-        let sync_service = self.cloud_sync_service.clone();
-
-        if let Some(user) = &self.current_user {
-            if let Ok(mut service) = sync_service.write() {
-                service.set_logged_in(user.id.clone());
-            } else {
-                tracing::warn!("同步前设置用户ID失败：无法获取云同步服务写锁");
-            }
-        }
-
-        // 创建同步引擎
-        let engine = SyncEngine::new(cloud_client, sync_service, storage);
-
-        cx.spawn(async move |this, cx: &mut AsyncApp| {
-            let result = engine.sync().await;
-
-            _ = this.update(cx, |this, cx| {
-                this.syncing = false;
-                let sync_requested = this.sync_requested;
-                match result {
-                    Ok(stats) => {
-                        tracing::info!(
-                            "同步完成：上传 {} 个，下载 {} 个，冲突 {} 个",
-                            stats.uploaded,
-                            stats.downloaded,
-                            stats.conflicts.len()
-                        );
-                        this.cloud_error = None;
-
-                        // 如果有冲突，保存并显示冲突解决对话框
-                        if !stats.conflicts.is_empty() {
-                            tracing::warn!("同步存在 {} 个冲突需要处理", stats.conflicts.len());
-                            this.pending_conflicts = stats.conflicts;
-                        }
-
-                        // 如果有错误，显示第一个错误
-                        if !stats.errors.is_empty() {
-                            this.cloud_error = Some(stats.errors.join("; "));
-                        }
-
-                        // 刷新首页本地数据，确保部分失败时界面仍与已落库数据一致
-                        this.refresh_local_home_data(cx);
-                    }
-                    Err(e) => {
-                        tracing::error!("同步失败: {}", e);
-                        this.cloud_error = Some(e.to_string());
-                    }
-                }
-                if sync_requested && this.pending_conflicts.is_empty() && this.cloud_error.is_none()
-                {
-                    this.sync_requested = false;
-                    this.trigger_sync(cx);
-                } else {
-                    this.sync_requested = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    /// 同步前记录本地连接解密状态，用于提示哪些连接会被引擎按连接粒度跳过。
-    fn log_sync_decrypt_health(&self, storage: &one_core::storage::StorageManager, scene: &str) {
-        if let Some(repo) = storage.get::<ConnectionRepository>() {
-            match repo.list_sync_decrypt_failures() {
-                Ok(failures) if !failures.is_empty() => {
-                    let preview = failures
-                        .iter()
-                        .take(5)
-                        .map(|(id, name)| format!("{}:{}", id, name))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    tracing::warn!(
-                        "{}检测到 {} 个连接解密失败：将由同步引擎跳过这些连接，其它连接继续同步和拉取。失败连接: {}",
-                        scene,
-                        failures.len(),
-                        preview
-                    );
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::warn!("{}前解密状态检查失败，将继续执行同步流程: {}", scene, e);
-                }
-            }
-        } else {
-            tracing::warn!(
-                "{}前解密状态检查失败：ConnectionRepository 不存在，将继续执行同步流程",
-                scene
-            );
-        }
-    }
-
-    /// 显示冲突解决对话框
-    fn show_conflict_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.pending_conflicts.is_empty() {
-            return;
-        }
-
-        let conflicts = self.pending_conflicts.clone();
-        let view = cx.entity().clone();
-
-        // 为每个冲突创建默认策略（使用建议的策略）
-        let mut default_strategies = std::collections::HashMap::new();
-        for conflict in &conflicts {
-            let suggested = match conflict.conflict_type {
-                one_core::cloud_sync::ConflictType::BothModified => ConflictResolution::KeepBoth,
-                one_core::cloud_sync::ConflictType::LocalDeletedCloudModified => {
-                    ConflictResolution::UseCloud
-                }
-                one_core::cloud_sync::ConflictType::LocalModifiedCloudDeleted => {
-                    ConflictResolution::UseLocal
-                }
-            };
-            default_strategies.insert(conflict.cloud.id.clone(), suggested);
-        }
-
-        // 创建策略选择状态
-        let strategies = cx.new(|_| default_strategies);
-
-        window.open_dialog(cx, move |dialog, _window, cx| {
-            let conflicts_count = conflicts.len();
-            let conflict_items: Vec<AnyElement> = conflicts
-                .iter()
-                .map(|conflict| {
-                    let local_name = conflict.local.name.clone();
-                    let conflict_type = format!("{}", conflict.conflict_type);
-                    let cloud_id = conflict.cloud.id.clone();
-                    let strategies_clone = strategies.clone();
-
-                    // 获取当前选择的策略
-                    let current_strategy = strategies
-                        .read(cx)
-                        .get(&cloud_id)
-                        .copied()
-                        .unwrap_or(ConflictResolution::UseCloud);
-
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .p_3()
-                        .bg(gpui::hsla(0.0, 0.0, 0.5, 0.1))
-                        .rounded_md()
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(format!("📄 {}", local_name)),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(gpui::hsla(0.0, 0.0, 0.5, 1.0))
-                                .child(
-                                    t!("Home.sync_conflict_type", conflict_type = conflict_type)
-                                        .to_string(),
-                                ),
-                        )
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .mt_2()
-                                .child(
-                                    Button::new(ElementId::Name(
-                                        format!("use_cloud_{}", cloud_id).into(),
-                                    ))
-                                    .label(t!("Home.sync_conflict_use_cloud"))
-                                    .with_variant(
-                                        if current_strategy == ConflictResolution::UseCloud {
-                                            ButtonVariant::Primary
-                                        } else {
-                                            ButtonVariant::Ghost
-                                        },
-                                    )
-                                    .xsmall()
-                                    .on_click({
-                                        let cloud_id = cloud_id.clone();
-                                        let strategies = strategies_clone.clone();
-                                        move |_, _, cx| {
-                                            strategies.update(cx, |s, cx| {
-                                                s.insert(
-                                                    cloud_id.clone(),
-                                                    ConflictResolution::UseCloud,
-                                                );
-                                                cx.notify();
-                                            });
-                                        }
-                                    }),
-                                )
-                                .child(
-                                    Button::new(ElementId::Name(
-                                        format!("use_local_{}", cloud_id).into(),
-                                    ))
-                                    .label(t!("Home.sync_conflict_use_local"))
-                                    .with_variant(
-                                        if current_strategy == ConflictResolution::UseLocal {
-                                            ButtonVariant::Primary
-                                        } else {
-                                            ButtonVariant::Ghost
-                                        },
-                                    )
-                                    .xsmall()
-                                    .on_click({
-                                        let cloud_id = cloud_id.clone();
-                                        let strategies = strategies_clone.clone();
-                                        move |_, _, cx| {
-                                            strategies.update(cx, |s, cx| {
-                                                s.insert(
-                                                    cloud_id.clone(),
-                                                    ConflictResolution::UseLocal,
-                                                );
-                                                cx.notify();
-                                            });
-                                        }
-                                    }),
-                                )
-                                .child(
-                                    Button::new(ElementId::Name(
-                                        format!("keep_both_{}", cloud_id).into(),
-                                    ))
-                                    .label(t!("Home.sync_conflict_keep_both"))
-                                    .with_variant(
-                                        if current_strategy == ConflictResolution::KeepBoth {
-                                            ButtonVariant::Primary
-                                        } else {
-                                            ButtonVariant::Ghost
-                                        },
-                                    )
-                                    .xsmall()
-                                    .on_click({
-                                        let strategies = strategies_clone.clone();
-                                        move |_, _, cx| {
-                                            strategies.update(cx, |s, cx| {
-                                                s.insert(
-                                                    cloud_id.clone(),
-                                                    ConflictResolution::KeepBoth,
-                                                );
-                                                cx.notify();
-                                            });
-                                        }
-                                    }),
-                                ),
-                        )
-                        .into_any_element()
-                })
-                .collect();
-
-            let view_clone = view.clone();
-            let strategies_for_ok = strategies.clone();
-
-            dialog
-                .title(
-                    t!("Home.sync_conflict_dialog_title", count = conflicts_count)
-                        .to_string()
-                        .into_any_element(),
-                )
-                .child(
-                    div()
-                        .id("conflict_items")
-                        .flex()
-                        .flex_col()
-                        .gap_3()
-                        .max_h(px(400.0))
-                        .overflow_y_scroll()
-                        .children(conflict_items)
-                        .into_any_element(),
-                )
-                .confirm()
-                .button_props(
-                    gpui_component::dialog::DialogButtonProps::default()
-                        .ok_text(t!("Home.sync_conflict_apply")),
-                )
-                .on_ok(move |_event, _window, cx| {
-                    let selected_strategies = strategies_for_ok.read(cx).clone();
-                    view_clone.update(cx, |this, cx| {
-                        this.resolve_conflicts_individually(selected_strategies, cx);
-                    });
-                    true
-                })
-        });
-    }
-
-    /// 使用单独的策略解决每个冲突
-    fn resolve_conflicts_individually(
-        &mut self,
-        strategies: std::collections::HashMap<String, ConflictResolution>,
-        cx: &mut Context<Self>,
-    ) {
-        if self.pending_conflicts.is_empty() {
-            return;
-        }
-
-        tracing::info!("使用单独策略解决 {} 个冲突", self.pending_conflicts.len());
-
-        if self.syncing {
-            self.sync_requested = true;
-            return;
-        }
-
-        let conflicts = self.pending_conflicts.clone();
-        let cloud_client = self.auth_service.cloud_client();
-        let sync_service = self.cloud_sync_service.clone();
-
-        if let Some(user) = &self.current_user {
-            if let Ok(mut service) = sync_service.write() {
-                service.set_logged_in(user.id.clone());
-            } else {
-                tracing::warn!("冲突解决前设置用户ID失败：无法获取云同步服务写锁");
-            }
-        }
-
-        let storage = cx.global::<GlobalStorageState>().storage.clone();
-        self.log_sync_decrypt_health(&storage, "单独冲突解决");
-        self.syncing = true;
-        self.sync_requested = false;
-        self.cloud_error = None;
-        cx.notify();
-
-        // 创建同步引擎
-        let engine = SyncEngine::new(cloud_client, sync_service, storage);
-
-        cx.spawn(async move |this, cx: &mut AsyncApp| {
-            // 使用策略映射应用冲突解决方案
-            let result = engine
-                .apply_conflict_resolutions(conflicts, strategies)
-                .await;
-
-            _ = this.update(cx, |this, cx| {
-                this.syncing = false;
-                let sync_requested = this.sync_requested;
-                match result {
-                    Ok(_stats) => {
-                        tracing::info!("冲突解决完成");
-                        this.pending_conflicts.clear();
-                        this.refresh_local_home_data(cx);
-                    }
-                    Err(e) => {
-                        tracing::error!("冲突解决失败: {}", e);
-                        this.cloud_error = Some(e.to_string());
-                    }
-                }
-                if sync_requested && this.pending_conflicts.is_empty() && this.cloud_error.is_none()
-                {
-                    this.sync_requested = false;
-                    this.trigger_sync(cx);
-                } else {
-                    this.sync_requested = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    // ========================================================================
-    // 用户认证
-    // ========================================================================
-
-    /// 尝试从本地存储恢复会话
-    fn try_restore_session(&mut self, cx: &mut Context<Self>) {
-        let auth = self.auth_service.clone();
-        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-            if let Some(user) = auth.try_restore_session().await {
-                // 同步 License 信息
-                let cloud_client = auth.cloud_client();
-                let subscription = cloud_client.get_subscription().await.ok().flatten();
-
-                _ = this.update(cx, |this, cx| {
-                    this.current_user = Some(user.clone());
-                    // 更新全局用户状态
-                    GlobalCurrentUser::set_user(Some(user.clone()), cx);
-
-                    // 更新 License
-                    let license_service = get_license_service(cx);
-                    if let Err(e) = license_service.update_from_subscription(user.id, subscription)
-                    {
-                        tracing::warn!("更新 License 失败: {}", e);
-                    }
-
-                    cx.notify();
-
-                    // 如果密钥已解锁，自动触发同步
-                    if crypto::has_master_key() {
-                        tracing::info!("会话已恢复且密钥已解锁，自动触发云同步");
-                        this.trigger_sync(cx);
-                    }
-                });
-            }
-        })
-        .detach();
-    }
-
-    /// 使用 OTP 验证码登录
-    fn verify_otp(&mut self, email: String, otp: String, cx: &mut Context<Self>) {
-        self.logging_in = true;
-        self.auth_error = None;
-        cx.notify();
-
-        let auth = self.auth_service.clone();
-
-        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-            let result = auth.verify_otp(&email, &otp).await;
-
-            // 如果登录成功，获取订阅信息
-            let subscription = if result.is_ok() {
-                auth.cloud_client().get_subscription().await.ok().flatten()
-            } else {
-                None
-            };
-
-            _ = this.update(cx, |this, cx| {
-                this.logging_in = false;
-                match result {
-                    Ok(user) => {
-                        this.current_user = Some(user.clone());
-                        // 更新全局用户状态
-                        GlobalCurrentUser::set_user(Some(user.clone()), cx);
-
-                        // 更新 License
-                        let license_service = get_license_service(cx);
-                        if let Err(e) =
-                            license_service.update_from_subscription(user.id, subscription)
-                        {
-                            tracing::warn!("更新 License 失败: {}", e);
-                        }
-
-                        this.auth_error = None;
-                        // 登录成功后，如果密钥已解锁，自动触发同步
-                        if crypto::has_master_key() {
-                            tracing::info!("登录成功且密钥已解锁，自动触发云同步");
-                            this.trigger_sync(cx);
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("OTP 验证失败: {}", e);
-                        this.auth_error = Some(e);
-                    }
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    /// 显示登录对话框（OTP 模式）
-    fn show_login_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let view = cx.entity();
-        show_auth_dialog(window, cx, view, |this, email, otp, cx| {
-            this.verify_otp(email, otp, cx);
-        });
-    }
-
-    fn show_encourage_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let dialog_view = cx.new(|cx| EncourageDialog::new(cx));
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            dialog
-                .title(t!("Encourage.title").to_string())
-                .w(px(760.0))
-                .child(dialog_view.clone())
-                .alert()
-                .button_props(
-                    gpui_component::dialog::DialogButtonProps::default()
-                        .ok_text(t!("Common.close")),
-                )
-        });
     }
 
     fn confirm_edit_connection(
@@ -894,53 +319,8 @@ impl HomePage {
     fn delete_connection(&mut self, conn_id: i64, cx: &mut Context<Self>) {
         let storage = cx.global::<GlobalStorageState>().storage.clone();
 
-        // 获取连接的 cloud_id，用于删除云端数据
-        let cloud_id = self
-            .connections
-            .iter()
-            .find(|c| c.id == Some(conn_id))
-            .and_then(|c| c.cloud_id.clone());
-
-        // 如果用户已登录且连接有 cloud_id，需要同时删除云端
-        let cloud_client = if cloud_id.is_some() && self.current_user.is_some() {
-            Some(self.auth_service.cloud_client())
-        } else {
-            None
-        };
-
         cx.spawn(async move |this, cx: &mut AsyncApp| {
-            // 1. 先删除云端连接（如果有）
-            if let (Some(cloud_id), Some(client)) = (&cloud_id, cloud_client) {
-                match client.delete_sync_data(cloud_id).await {
-                    Ok(_) => {
-                        tracing::info!("[删除] 云端连接删除成功: {}", cloud_id);
-                    }
-                    Err(e) => {
-                        // 云端删除失败，记录到待删除表，下次同步时重试
-                        tracing::warn!(
-                            "[删除] 云端连接删除失败: {} - {}（记录到待删除列表）",
-                            cloud_id,
-                            e
-                        );
-                        if let Some(pending_repo) = storage.get::<PendingCloudDeletionRepository>()
-                        {
-                            if let Err(e) = pending_repo.add(cloud_id, "connection") {
-                                tracing::error!("[删除] 记录待删除失败: {}", e);
-                            }
-                        }
-                    }
-                }
-            } else if let Some(cloud_id) = &cloud_id {
-                // 用户未登录但连接有 cloud_id，也记录到待删除表
-                tracing::info!("[删除] 用户离线，记录到待删除列表: {}", cloud_id);
-                if let Some(pending_repo) = storage.get::<PendingCloudDeletionRepository>() {
-                    if let Err(e) = pending_repo.add(cloud_id, "connection") {
-                        tracing::error!("[删除] 记录待删除失败: {}", e);
-                    }
-                }
-            }
-
-            // 2. 删除本地连接
+            // 删除本地连接
             let result = (|| {
                 let repo = storage
                     .get::<ConnectionRepository>()
@@ -1181,11 +561,6 @@ impl HomePage {
                         );
                     }
                     this.editing_workspace_id = None;
-                    // 兜底触发一次自动同步，避免当前页对自身工作区事件未回流时漏同步。
-                    if this.current_user.is_some() && crypto::has_master_key() {
-                        tracing::info!("本地工作区保存成功，自动触发云同步");
-                        this.trigger_sync(cx);
-                    }
                     cx.notify();
                 });
             }
@@ -1232,53 +607,8 @@ impl HomePage {
     fn handle_delete_workspace(&mut self, workspace_id: i64, cx: &mut Context<Self>) {
         let storage = cx.global::<GlobalStorageState>().storage.clone();
 
-        // 获取工作空间的 cloud_id，用于删除云端数据
-        let cloud_id = self
-            .workspaces
-            .iter()
-            .find(|w| w.id == Some(workspace_id))
-            .and_then(|w| w.cloud_id.clone());
-
-        // 如果用户已登录且工作空间有 cloud_id，需要同时删除云端
-        let cloud_client = if cloud_id.is_some() && self.current_user.is_some() {
-            Some(self.auth_service.cloud_client())
-        } else {
-            None
-        };
-
         cx.spawn(async move |this, cx: &mut AsyncApp| {
-            // 1. 先删除云端工作空间（如果有）
-            if let (Some(cloud_id), Some(client)) = (&cloud_id, cloud_client) {
-                match client.delete_sync_data(cloud_id).await {
-                    Ok(_) => {
-                        tracing::info!("[删除] 云端工作空间删除成功: {}", cloud_id);
-                    }
-                    Err(e) => {
-                        // 云端删除失败，记录到待删除表，下次同步时重试
-                        tracing::warn!(
-                            "[删除] 云端工作空间删除失败: {} - {}（记录到待删除列表）",
-                            cloud_id,
-                            e
-                        );
-                        if let Some(pending_repo) = storage.get::<PendingCloudDeletionRepository>()
-                        {
-                            if let Err(e) = pending_repo.add(cloud_id, "workspace") {
-                                tracing::error!("[删除] 记录待删除失败: {}", e);
-                            }
-                        }
-                    }
-                }
-            } else if let Some(cloud_id) = &cloud_id {
-                // 用户未登录但工作空间有 cloud_id，也记录到待删除表
-                tracing::info!("[删除] 用户离线，记录到待删除列表: {}", cloud_id);
-                if let Some(pending_repo) = storage.get::<PendingCloudDeletionRepository>() {
-                    if let Err(e) = pending_repo.add(cloud_id, "workspace") {
-                        tracing::error!("[删除] 记录待删除失败: {}", e);
-                    }
-                }
-            }
-
-            // 2. 删除本地工作空间
+            // 删除本地工作空间
             let result = (|| {
                 let repo = storage
                     .get::<WorkspaceRepository>()
@@ -1295,11 +625,6 @@ impl HomePage {
                             ConnectionDataEvent::WorkspaceDeleted { workspace_id },
                             cx,
                         );
-                        // 兜底触发一次自动同步，避免当前页对自身工作区事件未回流时漏同步。
-                        if this.current_user.is_some() && crypto::has_master_key() {
-                            tracing::info!("本地工作区删除成功，自动触发云同步");
-                            this.trigger_sync(cx);
-                        }
                         cx.notify();
                     });
                 }
@@ -1314,15 +639,9 @@ impl HomePage {
     pub(crate) fn show_connection_form(
         &mut self,
         db_type: DatabaseType,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.editing_connection_id.is_none()
-            && !self.ensure_master_key_ready_for_new_connection(window, cx)
-        {
-            return;
-        }
-
         let editing_conn = self
             .editing_connection_id
             .and_then(|id| self.connections.iter().find(|c| c.id == Some(id)).cloned());
@@ -1348,13 +667,7 @@ impl HomePage {
         );
     }
 
-    pub(crate) fn show_ssh_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.editing_connection_id.is_none()
-            && !self.ensure_master_key_ready_for_new_connection(window, cx)
-        {
-            return;
-        }
-
+    pub(crate) fn show_ssh_form(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let editing_conn = self.editing_connection_id.and_then(|id| {
             self.connections
                 .iter()
@@ -1382,13 +695,7 @@ impl HomePage {
         );
     }
 
-    pub(crate) fn show_redis_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.editing_connection_id.is_none()
-            && !self.ensure_master_key_ready_for_new_connection(window, cx)
-        {
-            return;
-        }
-
+    pub(crate) fn show_redis_form(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let editing_conn = self.editing_connection_id.and_then(|id| {
             self.connections
                 .iter()
@@ -1416,13 +723,7 @@ impl HomePage {
         );
     }
 
-    pub(crate) fn show_mongodb_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.editing_connection_id.is_none()
-            && !self.ensure_master_key_ready_for_new_connection(window, cx)
-        {
-            return;
-        }
-
+    pub(crate) fn show_mongodb_form(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let editing_conn = self.editing_connection_id.and_then(|id| {
             self.connections
                 .iter()
@@ -1450,13 +751,7 @@ impl HomePage {
         );
     }
 
-    pub(crate) fn show_serial_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.editing_connection_id.is_none()
-            && !self.ensure_master_key_ready_for_new_connection(window, cx)
-        {
-            return;
-        }
-
+    pub(crate) fn show_serial_form(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let editing_conn = self.editing_connection_id.and_then(|id| {
             self.connections
                 .iter()
@@ -1484,211 +779,12 @@ impl HomePage {
         );
     }
 
-    fn ensure_master_key_ready_for_new_connection(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        if crypto::has_repo_password_set() {
-            return true;
-        }
-
-        self.show_encryption_key_dialog(window, cx);
-        false
-    }
-
-    fn show_encryption_key_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let view = cx.entity();
-        let has_password_set = crypto::has_repo_password_set();
-        let has_key_in_memory = crypto::has_master_key();
-        let is_first_setup = !has_password_set;
-        let is_change_mode = has_password_set && has_key_in_memory;
-        let initial_master_key = crypto::get_raw_master_key().or_else(|| {
-            let storage = key_storage::get_key_storage();
-            storage.load()
-        });
-
-        let key_input = cx.new(|cx| {
-            let mut state = InputState::new(window, cx)
-                .placeholder(t!("Encryption.repo_password_placeholder"))
-                .masked(true);
-
-            if let Some(ref value) = initial_master_key {
-                state = state.default_value(value);
-            }
-
-            state
-        });
-
-        let error_message = cx.new(|_| Option::<String>::None);
-
-        let key_input_for_ok = key_input.clone();
-        let error_msg_for_ok = error_message.clone();
-
-        let key_input_for_render = key_input.clone();
-        let error_msg_for_render = error_message.clone();
-
-        let dialog_title = if is_first_setup {
-            t!("Encryption.set_repo_password")
-        } else if is_change_mode {
-            t!("Encryption.change_repo_password")
-        } else {
-            t!("Encryption.unlock_repo_password")
-        };
-
-        window.open_dialog(cx, move |dialog, _window, cx| {
-            let key_input_ok = key_input_for_ok.clone();
-            let error_msg_ok = error_msg_for_ok.clone();
-
-            dialog
-                .title(dialog_title.to_string())
-                .width(px(450.))
-                .confirm()
-                .on_ok(move |_, _window, cx| {
-                    let input_key = key_input_ok.read(cx).text().to_string();
-
-                    if input_key.is_empty() {
-                        error_msg_ok.update(cx, |msg, cx| {
-                            *msg = Some(t!("Encryption.key_empty").to_string());
-                            cx.notify();
-                        });
-                        return false;
-                    }
-
-                    if is_first_setup {
-                        crypto::set_master_key(&input_key);
-                        return true;
-                    }
-
-                    if is_change_mode {
-                        let old_key = match crypto::get_raw_master_key() {
-                            Some(key) if !key.is_empty() => key,
-                            _ => {
-                                error_msg_ok.update(cx, |msg, cx| {
-                                    *msg = Some(t!("Encryption.password_incorrect").to_string());
-                                    cx.notify();
-                                });
-                                return false;
-                            }
-                        };
-
-                        if input_key != old_key {
-                            match crypto::change_master_key(&old_key, &input_key, &input_key) {
-                                Ok(()) => {
-                                    let storage = cx.global::<GlobalStorageState>().storage.clone();
-                                    match re_encrypt_all_connections(&storage) {
-                                        Ok(count) => {
-                                            tracing::info!(
-                                                "主密钥修改成功，已重新加密 {} 个本地连接",
-                                                count
-                                            );
-                                        }
-                                        Err(e) => {
-                                            tracing::error!("重新加密本地连接失败: {}", e);
-                                            error_msg_ok.update(cx, |msg, cx| {
-                                                *msg = Some(e.to_string());
-                                                cx.notify();
-                                            });
-                                            return false;
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    error_msg_ok.update(cx, |msg, cx| {
-                                        *msg = Some(e.to_string());
-                                        cx.notify();
-                                    });
-                                    return false;
-                                }
-                            }
-                        }
-
-                        return true;
-                    }
-
-                    match crypto::verify_and_set_master_key(&input_key) {
-                        Ok(()) => true,
-                        Err(_) => {
-                            error_msg_ok.update(cx, |msg, cx| {
-                                *msg = Some(t!("Encryption.password_incorrect").to_string());
-                                cx.notify();
-                            });
-                            false
-                        }
-                    }
-                })
-                .on_close({
-                    let view_for_sync = view.clone();
-                    move |_window, _result, cx| {
-                        if crypto::has_master_key() {
-                            view_for_sync.update(cx, |this, cx| {
-                                // 密钥已就绪后刷新连接列表，修复启动时序导致的空密码回显
-                                this.load_connections(cx);
-                                if this.current_user.is_some() {
-                                    tracing::info!("密钥设置/解锁成功，自动触发云同步");
-                                    this.trigger_sync(cx);
-                                }
-                            });
-                        }
-                    }
-                })
-                .child(
-                    v_flex()
-                        .gap_4()
-                        .p_4()
-                        .child(
-                            h_flex()
-                                .items_center()
-                                .gap_3()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .flex_shrink_0()
-                                        .w(px(80.))
-                                        .child(t!("Encryption.repo_password_label").to_string()),
-                                )
-                                .child(Input::new(&key_input_for_render).mask_toggle().w_full()),
-                        )
-                        .child(
-                            v_flex()
-                                .gap_2()
-                                .child(
-                                    div().text_base().font_weight(FontWeight::SEMIBOLD).child(
-                                        t!("Encryption.remember_password_title").to_string(),
-                                    ),
-                                )
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .child(t!("Encryption.remember_password_detail_local").to_string()),
-                                )
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().warning)
-                                        .child(t!("Encryption.remember_password_detail_cloud").to_string()),
-                                ),
-                        )
-                        .when_some(error_msg_for_render.read(cx).clone(), |this, msg| {
-                            this.child(div().text_sm().text_color(cx.theme().danger).child(msg))
-                        }),
-                )
-        });
-    }
-
     fn render_toolbar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity();
 
         let workspace_filter_open = self.workspace_filter_open;
         let workspace_filter =
             self.render_workspace_filter_popover(workspace_filter_open, window, cx);
-
-        let is_syncing = self.syncing;
-        let is_logged_in = self.current_user.is_some();
-        let has_sync_license = is_feature_enabled(Feature::CloudSync, cx);
-        let has_master_key = crypto::has_master_key();
-        let has_conflicts = !self.pending_conflicts.is_empty();
-        let conflict_count = self.pending_conflicts.len();
 
         h_flex()
             .gap_3()
@@ -1816,77 +912,6 @@ impl HomePage {
 
                                 menu
                             }),
-                    )
-                    // 分隔线
-                    .child(div().h(px(20.0)).w(px(1.0)).bg(cx.theme().border).mx_1())
-                    // 同步按钮
-                    .child(
-                        Button::new("sync-button")
-                            .icon(if has_sync_license {
-                                IconName::Refresh
-                            } else {
-                                IconName::Key
-                            })
-                            .label(if is_syncing {
-                                t!("Home.syncing").to_string()
-                            } else if !has_sync_license {
-                                t!("License.upgrade_to_pro").to_string()
-                            } else {
-                                t!("Home.sync").to_string()
-                            })
-                            .ghost()
-                            .disabled((!is_logged_in && has_sync_license) || is_syncing)
-                            .tooltip(if !is_logged_in && has_sync_license {
-                                t!("Home.cloud_need_login")
-                            } else if !has_sync_license {
-                                t!("License.pro_required")
-                            } else {
-                                t!("Home.sync_tooltip")
-                            })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                if !has_sync_license {
-                                    show_upgrade_dialog(window, cx);
-                                } else {
-                                    this.trigger_sync(cx);
-                                }
-                            })),
-                    )
-                    // 冲突指示器
-                    .when(has_conflicts, |this| {
-                        this.child(
-                            Button::new("conflict-button")
-                                .icon(IconName::TriangleAlert)
-                                .label(format!("{}", conflict_count))
-                                .ghost()
-                                .text_color(cx.theme().warning)
-                                .tooltip(t!("Home.conflict_tooltip", count = conflict_count))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.show_conflict_dialog(window, cx);
-                                })),
-                        )
-                    })
-                    // 主密钥按钮
-                    .child(
-                        Button::new("encryption-key-button")
-                            .icon(IconName::Key)
-                            .label(if has_master_key {
-                                t!("Encryption.key_unlocked").to_string()
-                            } else {
-                                t!("Encryption.edit_repo_password").to_string()
-                            })
-                            .ghost()
-                            .when(has_master_key, |btn| btn.text_color(cx.theme().success))
-                            .when(!has_master_key, |btn| {
-                                btn.text_color(cx.theme().muted_foreground)
-                            })
-                            .tooltip(if has_master_key {
-                                t!("Encryption.key_unlocked_tooltip")
-                            } else {
-                                t!("Encryption.key_locked_tooltip")
-                            })
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.show_encryption_key_dialog(window, cx);
-                            })),
                     ),
             )
             // ===== 中间弹性空间 =====
@@ -2073,12 +1098,6 @@ impl HomePage {
     }
 
     fn render_sidebar(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // 同步全局用户状态：如果设置页面执行了登出，同步清空本地状态
-        let global_user = GlobalCurrentUser::get_user(cx);
-        if global_user.is_none() && self.current_user.is_some() {
-            self.current_user = None;
-        }
-
         let filter_types = ConnectionType::all();
 
         v_flex()
@@ -2145,47 +1164,15 @@ impl HomePage {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .child(
-                        Button::new("open_encourage_dialog")
-                            .icon(IconName::Heart)
-                            .label(t!("Encourage.button_label"))
-                            .w_full()
-                            .justify_start()
-                            .on_click(cx.listener(|this: &mut HomePage, _, window, cx| {
-                                this.show_encourage_dialog(window, cx);
-                            })),
-                    )
-                    .child(
                         Button::new("open_settings")
                             .icon(IconName::Settings)
                             .label(t!("Common.settings"))
                             .w_full()
                             .justify_start()
-                            .on_click(cx.listener(|this: &mut HomePage, _, window, cx| {
-                                this.add_settings_tab(window, cx);
-                            })),
+                            .on_click(move |_, _window, cx| {
+                                crate::settings_window::open_settings_window(cx);
+                            }),
                     )
-                    // 用户头像区域
-                    .child({
-                        let user = self.current_user.as_ref();
-                        let view = cx.entity();
-                        v_flex()
-                            .relative()
-                            .w_full()
-                            .mt_2()
-                            .pt_2()
-                            .border_t_1()
-                            .border_color(cx.theme().border)
-                            .child(render_user_avatar(
-                                user,
-                                view.clone(),
-                                |this: &mut HomePage, window, cx| {
-                                    if this.current_user.is_none() {
-                                        this.show_login_dialog(window, cx);
-                                    }
-                                },
-                                cx,
-                            ))
-                    }),
             )
     }
 
@@ -2579,12 +1566,6 @@ impl HomePage {
                     .border_color(cx.theme().list_active_border)
             })
             .on_double_click(cx.listener(move |this, _, w, cx| {
-                // 如果主密钥未解锁且已设置过密码，拦截连接操作并弹出解锁对话框
-                if !crypto::has_master_key() && crypto::has_repo_password_set() {
-                    this.show_encryption_key_dialog(w, cx);
-                    return;
-                }
-
                 let strategy =
                     build_connection_open_strategy(clone_conn.clone(), workspace.clone());
                 strategy.open(this, w, cx);
@@ -3019,41 +2000,6 @@ impl TabContent for HomePage {
 
 impl Render for HomePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // 检测会话过期：token 刷新失败时由回调设置静态标志，在此处响应
-        if crate::auth::check_and_reset_session_expired() {
-            self.current_user = None;
-            // 延迟弹出登录对话框，避免在 render 中直接修改窗口
-            let view = cx.entity();
-            window.defer(cx, move |window, cx| {
-                view.update(cx, |this, cx| {
-                    this.show_login_dialog(window, cx);
-                });
-            });
-        }
-
-        // 检测认证错误：登录/注册失败时显示错误提示
-        if let Some(error) = self.auth_error.take() {
-            let view = cx.entity();
-            window.defer(cx, move |window, cx| {
-                let error_msg = error.clone();
-                let view_for_ok = view.clone();
-                window.open_dialog(cx, move |dialog, _window, _cx| {
-                    let view_clone = view_for_ok.clone();
-                    dialog
-                        .title(t!("Auth.auth_error_title").to_string())
-                        .child(error_msg.clone().into_any_element())
-                        .alert()
-                        .on_ok(move |_, window, cx| {
-                            // 关闭错误对话框后重新弹出登录对话框
-                            view_clone.update(cx, |this, cx| {
-                                this.show_login_dialog(window, cx);
-                            });
-                            true
-                        })
-                });
-            });
-        }
-
         div().size_full().track_focus(&self.focus_handle).child(
             h_flex()
                 .size_full()
@@ -3075,23 +2021,4 @@ impl Render for HomePage {
                 ),
         )
     }
-}
-
-/// 使用当前主密钥重新加密并保存所有连接。
-fn re_encrypt_all_connections(
-    storage: &one_core::storage::StorageManager,
-) -> anyhow::Result<usize> {
-    let conn_repo = storage
-        .get::<ConnectionRepository>()
-        .ok_or_else(|| anyhow::anyhow!("ConnectionRepository not found"))?;
-
-    let connections = conn_repo.list()?;
-    let mut count = 0;
-
-    for conn in connections {
-        conn_repo.update(&conn)?;
-        count += 1;
-    }
-
-    Ok(count)
 }

@@ -20,6 +20,7 @@ actions!(
         MinimizeWindow,
         DuplicateTab,
         QuitApp,
+        OpenSettings,
     ]
 );
 
@@ -146,13 +147,6 @@ pub fn init(cx: &mut App) {
     one_core::init(cx);
     one_ui::init(cx);
     db_view::chatdb::agents::init(cx);
-    crate::auth::init(cx);
-    crate::license::init(cx);
-    {
-        let auth_service = crate::auth::get_auth_service(cx);
-        let global_provider_state = cx.global::<GlobalProviderState>().clone();
-        global_provider_state.set_cloud_client(auth_service.cloud_client());
-    }
     db::init_cache(cx);
     // 启动后台磁盘缓存清理任务
     if let Some(cache) = cx.try_global::<db::GlobalNodeCache>() {
@@ -217,6 +211,10 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-q", QuitApp, None),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("alt-f4", QuitApp, None),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-,", OpenSettings, None),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-,", OpenSettings, None),
     ]);
 
     cx.on_action(|_: &ActivateTab1, cx| activate_tab_by_number(1, cx));
@@ -232,6 +230,7 @@ pub fn init(cx: &mut App) {
     cx.on_action(|_: &MinimizeWindow, cx| minimize_window(cx));
     cx.on_action(|_: &DuplicateTab, cx| duplicate_tab(cx));
     cx.on_action(|_: &QuitApp, cx| quit_app(cx));
+    cx.on_action(|_: &OpenSettings, cx| crate::settings_window::open_settings_window(cx));
     cx.on_action(|_: &OpenConnectionQuickOpen, cx| {
         let Some(active_window) = cx.active_window() else {
             return;

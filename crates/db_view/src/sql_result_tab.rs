@@ -22,7 +22,7 @@ use gpui_component::{
 };
 use one_ui::edit_table::Column;
 use smol::Timer;
-use tracing::log::error;
+use tracing::error;
 
 use crate::table_data::data_grid::{DataGrid, DataGridConfig, DataGridUsage};
 use one_core::ai_chat::ask_ai::AskAiButton;
@@ -542,43 +542,6 @@ impl SqlResultTabContainer {
                     this.update_data(columns, rows, vec![], cx);
                     this.load_column_meta_if_editable(cx);
                 });
-
-                if editable
-                    && database_type == one_core::storage::DatabaseType::ClickHouse
-                    && !table_name.is_empty()
-                {
-                    let global_state = global_state.clone();
-                    let connection_id = connection_id.clone();
-                    let database_name = db_name.clone();
-                    let table_name = table_name.clone();
-                    let data_grid = data_grid.clone();
-                    cx.spawn(async move |cx: &mut AsyncApp| {
-                        let result = global_state
-                            .list_views_view(cx, connection_id, database_name)
-                            .await;
-                        let table_name = table_name
-                            .split('.')
-                            .last()
-                            .unwrap_or(&table_name)
-                            .to_string();
-                        let is_view = result
-                            .ok()
-                            .map(|view| {
-                                view.rows.iter().any(|row| {
-                                    row.first().map(|name| name == &table_name).unwrap_or(false)
-                                })
-                            })
-                            .unwrap_or(false);
-                        if is_view {
-                            cx.update(|cx| {
-                                data_grid.update(cx, |grid, cx| {
-                                    grid.set_editable(false, cx);
-                                });
-                            });
-                        }
-                    })
-                    .detach();
-                }
 
                 let tab = SqlResultTab {
                     sql: query_result.sql.clone(),

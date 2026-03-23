@@ -132,7 +132,7 @@ typos
 | 类别 | 技术 |
 |------|------|
 | UI 框架 | [GPUI](https://gpui.rs)（来自 Zed 编辑器） |
-| 数据库驱动 | tokio-postgres, mysql_async, rusqlite, tiberius, oracle, clickhouse, redis, mongodb |
+| 数据库驱动 | tokio-postgres, mysql_async, rusqlite, oracle, clickhouse, redis, mongodb |
 | SSH/SFTP | russh, russh-sftp |
 | 终端仿真 | alacritty_terminal |
 | 文本编辑 | ropey, tree-sitter, sqlparser |

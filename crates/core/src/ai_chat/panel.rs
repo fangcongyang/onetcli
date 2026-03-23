@@ -1,6 +1,6 @@
 //! AI Chat Panel - 数据库 AI 助手对话面板
 
-use crate::cloud_sync::GlobalCloudUser;
+use crate::GlobalUserState;
 use crate::gpui_tokio::Tokio;
 use crate::llm::chat_history::ChatMessage;
 use crate::llm::{
@@ -96,7 +96,6 @@ impl LanguageMatcher {
             "postgresql",
             "postgres",
             "sqlite",
-            "mssql",
             "oracle",
             "plsql",
         ])
@@ -394,7 +393,7 @@ impl AiChatPanel {
             session_list: None,
             custom_colors: None,
             settings_panel,
-            is_logged_in: GlobalCloudUser::is_logged_in(cx),
+            is_logged_in: GlobalUserState::is_logged_in(cx),
             system_instruction: None,
         };
 
@@ -406,7 +405,7 @@ impl AiChatPanel {
     fn load_providers(&mut self, cx: &mut Context<Self>) {
         let global_state = cx.global::<GlobalStorageState>();
         let storage_manager = global_state.storage.clone();
-        let is_logged_in = GlobalCloudUser::is_logged_in(cx);
+        let is_logged_in = GlobalUserState::is_logged_in(cx);
         self.is_logged_in = is_logged_in;
 
         cx.spawn(async move |this, cx: &mut AsyncApp| {
@@ -1272,7 +1271,7 @@ impl SessionListHost for AiChatPanel {
 
 impl Render for AiChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_logged_in = GlobalCloudUser::is_logged_in(cx);
+        let is_logged_in = GlobalUserState::is_logged_in(cx);
         if is_logged_in != self.is_logged_in {
             self.is_logged_in = is_logged_in;
             self.load_providers(cx);

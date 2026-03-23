@@ -10,7 +10,7 @@ use gpui_component::{
     scroll::ScrollableElement,
     v_flex,
 };
-use one_core::cloud_sync::TeamOption;
+use one_core::TeamOption;
 use one_core::connection_notifier::{ConnectionDataEvent, emit_connection_event};
 use one_core::storage::{DatabaseType, StoredConnection, Workspace};
 use rust_i18n::t;

@@ -2,9 +2,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use native_tls::TlsConnector;
 use one_core::storage::DbConnectionConfig;
+use postgres_native_tls::MakeTlsConnector;
 use tokio::sync::Mutex;
-use tokio_postgres::{types::Type, Client, Config, NoTls, Row, Statement};
+use tokio_postgres::{types::Type, Client, Config, Row, Statement};
 use tracing::{debug, error, info};
 
 use crate::connection::{DbConnection, DbError, StreamingProgress};
@@ -249,12 +251,48 @@ impl DbConnection for PostgresDbConnection {
             debug!("[PostgreSQL] Application name: {}", app_name);
         }
 
-        // Connect to PostgreSQL
-        debug!("[PostgreSQL] Establishing connection...");
-        let (client, connection) = pg_config.connect(NoTls).await.map_err(|e| {
-            error!("[PostgreSQL] Connection failed: {}", e);
-            DbError::connection_with_source("failed to connect", e)
-        })?;
+        let ssl_mode = config
+            .get_param("sslmode")
+            .map(|s| s.to_lowercase())
+            .unwrap_or_else(|| "prefer".to_string());
+        debug!("[PostgreSQL] SSL mode: {}", ssl_mode);
+
+        let use_tls = ssl_mode != "disable";
+        let accept_invalid_certs = ssl_mode == "prefer";
+
+        debug!("[PostgreSQL] Establishing connection (TLS: {})...", use_tls);
+
+        #[cfg(feature = "postgres-tls")]
+        let (client, connection) = {
+            let mut builder = TlsConnector::builder();
+            if accept_invalid_certs {
+                builder.danger_accept_invalid_certs(true);
+            }
+            let tls_connector = builder.build().map_err(|e| {
+                error!("[PostgreSQL] TLS configuration failed: {}", e);
+                DbError::connection_with_source("failed to configure TLS", e)
+            })?;
+            let tls_connector = MakeTlsConnector::new(tls_connector);
+            pg_config.connect(tls_connector).await.map_err(|e| {
+                error!("[PostgreSQL] Connection failed: {}", e);
+                DbError::connection_with_source("failed to connect", e)
+            })?
+        };
+
+        #[cfg(not(feature = "postgres-tls"))]
+        let (client, connection) = {
+            use tokio_postgres::NoTls;
+            if use_tls {
+                return Err(DbError::connection_with_source(
+                    "TLS support not compiled in",
+                    anyhow::anyhow!("Compile with postgres-tls feature to enable TLS"),
+                ));
+            }
+            pg_config.connect(NoTls).await.map_err(|e| {
+                error!("[PostgreSQL] Connection failed: {}", e);
+                DbError::connection_with_source("failed to connect", e)
+            })?
+        };
 
         // Spawn the connection task in background - it handles communication with the server
         tokio::spawn(async move {

@@ -14,7 +14,7 @@ use gpui_component::{
     tab::{Tab, TabBar},
     v_flex, ActiveTheme, Disableable, Sizable, Size, TitleBar,
 };
-use one_core::cloud_sync::{GlobalCloudUser, TeamOption};
+use one_core::{GlobalUserState, TeamOption};
 use one_core::connection_notifier::{get_notifier, ConnectionDataEvent};
 use one_core::gpui_tokio::Tokio;
 use one_core::storage::traits::Repository;
@@ -153,9 +153,6 @@ pub struct SshFormWindow {
 
     // 其他设置
     remark_input: Entity<InputState>,
-
-    // 云同步开关
-    sync_enabled: bool,
 
     is_testing: bool,
     test_result: Option<Result<(), String>>,
@@ -306,12 +303,8 @@ impl SshFormWindow {
         let mut enable_jump_server = false;
         let mut enable_proxy = false;
         let mut proxy_type = ProxyTypeSelection::default();
-        let mut sync_enabled = true; // 默认启用云同步
 
         if let Some(ref conn) = config.editing_connection {
-            // 加载同步状态
-            sync_enabled = conn.sync_enabled;
-
             if let Ok(params) = conn.to_ssh_params() {
                 name_input.update(cx, |s, cx| s.set_value(&conn.name, window, cx));
                 host_input.update(cx, |s, cx| s.set_value(&params.host, window, cx));
@@ -445,7 +438,6 @@ impl SshFormWindow {
             init_script_input,
             default_directory_input,
             remark_input,
-            sync_enabled,
             is_testing: false,
             test_result: None,
         }
@@ -746,10 +738,9 @@ impl SshFormWindow {
 
         let workspace_id = self.get_workspace_id(cx);
         let mut conn = StoredConnection::new_ssh(name, params, workspace_id);
-        conn.sync_enabled = self.sync_enabled; // 设置同步状态
         conn.team_id = self.get_team_id(cx);
         if !self.is_editing {
-            conn.owner_id = GlobalCloudUser::get_user(cx).map(|u| u.id);
+            conn.owner_id = GlobalUserState::get_user(cx).map(|u| u.id);
         }
         if self.is_editing {
             conn.id = self.editing_id;
@@ -888,27 +879,6 @@ impl SshFormWindow {
                 &t!("TeamSync.team_label"),
                 Select::new(&self.team_select).w_full(),
             ))
-            .child(
-                self.render_form_row(
-                    &t!("ConnectionForm.cloud_sync"),
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Checkbox::new("sync-enabled")
-                                .checked(self.sync_enabled)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.sync_enabled = !this.sync_enabled;
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(t!("ConnectionForm.cloud_sync_desc").to_string()),
-                        ),
-                ),
-            )
     }
 
     /// 渲染初始化标签页

@@ -21,7 +21,7 @@ use one_core::{
 };
 use rust_i18n::t;
 use std::collections::HashSet;
-use tracing::log::{error, warn};
+use tracing::{error, warn};
 use uuid::Uuid;
 
 // Event handler for database tree view events

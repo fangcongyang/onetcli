@@ -24,6 +24,7 @@ pub struct SettingPage {
     pub(super) description: Option<SharedString>,
     pub(super) groups: Vec<SettingGroup>,
     pub(super) header_style: StyleRefinement,
+    pub(super) icon: Option<IconName>,
 }
 
 impl SettingPage {
@@ -35,6 +36,7 @@ impl SettingPage {
             description: None,
             groups: Vec::new(),
             header_style: StyleRefinement::default(),
+            icon: None,
         }
     }
 
@@ -79,6 +81,12 @@ impl SettingPage {
     /// Set the style refinement for the header of the setting page.
     pub fn header_style(mut self, style: &StyleRefinement) -> Self {
         self.header_style = style.clone();
+        self
+    }
+
+    /// Set the icon for the setting page.
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
         self
     }
 

@@ -4,7 +4,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use gpui_component::highlighter::HighlightTheme;
-use gpui_component::text::{CodeBlock, MarkdownCodeBlock, Span, parse_markdown_code_blocks};
+use gpui_component::text::{parse_markdown_code_blocks, CodeBlock, MarkdownCodeBlock, Span};
 
 #[derive(Clone, Debug)]
 pub struct SqlCodeBlock {
@@ -72,7 +72,7 @@ fn is_sql_language(language: Option<&str>) -> bool {
     let lang = language.to_lowercase();
     matches!(
         lang.as_str(),
-        "sql" | "mysql" | "postgresql" | "sqlite" | "mssql" | "oracle"
+        "sql" | "mysql" | "postgresql" | "sqlite" | "oracle"
     )
 }
 

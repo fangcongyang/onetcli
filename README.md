@@ -132,7 +132,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 | Category | Technologies |
 |----------|-------------|
 | UI Framework | [GPUI](https://gpui.rs) (from Zed editor) |
-| Databases | tokio-postgres, mysql_async, rusqlite, tiberius, oracle, clickhouse, redis, mongodb |
+| Databases | tokio-postgres, mysql_async, rusqlite, oracle, clickhouse, redis, mongodb |
 | SSH/SFTP | russh, russh-sftp |
 | Terminal | alacritty_terminal |
 | Text Editing | ropey, tree-sitter, sqlparser |

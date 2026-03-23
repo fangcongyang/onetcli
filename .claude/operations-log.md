@@ -1167,3 +1167,29 @@
 - `cargo check -p terminal_view`
 - 结果：全部通过
 - 备注：仍存在既有 `num-bigint-dig v0.8.4` future-incompat 警告，与本次改动无关
+
+## Phase 2 完成 - MSSQL 和 Encourage 清理
+时间：2026-03-22
+
+### 本次完成的工作
+
+1. **streaming_parser.rs** - 删除 MSSQL GO 语句分隔符处理逻辑（行 337-351）
+2. **chat_markdown.rs** - 从 SQL 语言检测中移除 "mssql"（行 75）
+3. **ai_chat/panel.rs** - 从 SQL 语言匹配器移除 "mssql"（行 99）
+4. **删除 tiberius 依赖**：
+   - `crates/db/Cargo.toml` - 删除 `tiberius.workspace = true`
+   - `Cargo.toml` - 删除 `tiberius = { version = "0.12.3", features = ["chrono"] }`
+5. **修复 tracing 导入**（删除 tiberius 后 tracing 的 log feature 不可用）：
+   - `crates/db/src/plugin.rs` - `tracing::log::error` → `tracing::error`
+   - `crates/db_view/src/db_tree_event.rs` - `tracing::log::{error, warn}` → `tracing::{error, warn}`
+   - `crates/db_view/src/db_tree_view.rs` - `tracing::log::{error, info, trace, warn}` → `tracing::{error, info, trace, warn}`
+   - `crates/db_view/src/sql_editor_view.rs` - `tracing::log::error` → `tracing::error`
+   - `crates/db_view/src/sql_result_tab.rs` - `tracing::log::error` → `tracing::error`
+   - `crates/db_view/src/table_data/data_grid.rs` - `tracing::{error, log::trace}` → `tracing::{error, trace}`
+6. **更新文档**：
+   - `README_CN.md` - 从数据库驱动列表移除 tiberius
+   - `README.md` - 从数据库驱动列表移除 tiberius
+
+### 本地验证
+- `cargo check -p main`
+  - 结果：编译成功，仅有未使用导入和死代码警告（遗留自 Supabase 清理），与 MSSQL/Encourage 清理无关

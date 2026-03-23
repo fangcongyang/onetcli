@@ -326,13 +326,7 @@ impl EditorTableDelegate {
         self.column_meta
             .get(col_ix)
             .map(|m| {
-                let field_type = FieldType::from_db_type(&*m.data_type);
-                // Oracle DATE contains both date and time
-                if field_type == FieldType::Date && self.database_type == DatabaseType::Oracle {
-                    FieldType::DateTime
-                } else {
-                    field_type
-                }
+                FieldType::from_db_type(&*m.data_type)
             })
             .unwrap_or(FieldType::Unknown)
     }
@@ -497,10 +491,8 @@ impl EditorTableDelegate {
             .get(col_ix)
             .map(|meta| {
                 let db_type = meta.data_type.to_uppercase();
-                let is_oracle_date =
-                    db_type == "DATE" && self.database_type == DatabaseType::Oracle;
 
-                if is_oracle_date || db_type.contains("TIMESTAMP") || db_type.contains("DATETIME") {
+                if db_type.contains("TIMESTAMP") || db_type.contains("DATETIME") {
                     220
                 } else if db_type.contains("DATE") {
                     120

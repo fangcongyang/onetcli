@@ -3,8 +3,7 @@ use gpui::{App, SharedString};
 use rusqlite::params;
 
 use crate::storage::connection::SqliteConnection;
-use crate::storage::manager::{GlobalStorageState, now};
-use crate::storage::models::has_decrypt_failure_in_sensitive_fields;
+use crate::storage::manager::{now, GlobalStorageState};
 use crate::storage::quick_command::QuickCommandRepository;
 use crate::storage::row_mapping::FromSqliteRow;
 use crate::storage::traits::Repository;
@@ -337,10 +336,8 @@ impl ConnectionRepository {
 
             let mut failures = Vec::new();
             for row in rows {
-                let (id, name, params) = row?;
-                if has_decrypt_failure_in_sensitive_fields(&params) {
-                    failures.push((id, name));
-                }
+                let (id, name, _params) = row?;
+                failures.push((id, name));
             }
             Ok(failures)
         })

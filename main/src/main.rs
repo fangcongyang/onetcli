@@ -2,17 +2,13 @@
 
 rust_i18n::i18n!("locales", fallback = "en");
 
-mod auth;
-
-mod encourage;
 mod home;
 mod home_tab;
-mod license;
 mod onetcli_app;
 mod setting_tab;
 mod settings;
+mod settings_window;
 mod update;
-mod user_avatar;
 
 use crate::onetcli_app::OnetCliApp;
 use db::GlobalDbState;

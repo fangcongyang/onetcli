@@ -21,7 +21,7 @@ use sqlparser::dialect::Dialect;
 use sqlparser::parser::Parser;
 use std::collections::HashMap;
 use std::io;
-use tracing::log::error;
+use tracing::error;
 
 /// Standard SQL functions common to most databases
 pub const STANDARD_SQL_FUNCTIONS: &[(&str, &str)] = &[

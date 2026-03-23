@@ -19,7 +19,7 @@ members = [
     "crates/db_view",
     "crates/terminal",
     "crates/terminal_view"
-    , "main", "crates/ssh", "crates/sftp", "crates/sftp_view", "crates/one_ui", "crates/redis_view", "crates/license_tool", "crates/mongodb_view"]
+    , "main", "crates/ssh", "crates/sftp", "crates/sftp_view", "crates/one_ui", "crates/redis_view", "crates/mongodb_view"]
 resolver = "2"
 
 [workspace.package]
@@ -94,14 +94,13 @@ dirs = "6.0"
 chrono = {version = "0.4.23", features = ["serde"]}
 rust_decimal = { version = "1.19.0" }
 hex = "0.4"
-tiberius = { version = "0.12.3", features = ["chrono"] }
-oracle = "0.6.3"
 once_cell = "1.21"
 proptest = "1.4"
 mysql_async = "0.36.1"
 tokio-postgres = { version = "0.7.15",features = ["with-serde_json-1", "with-chrono-0_4", "with-uuid-1"] }
+postgres-native-tls = "0.5"
+native-tls = "0.2"
 rusqlite = { version = "0.38", features = ["bundled", "column_decltype"] }
-clickhouse = "0.14.1"
 sqlformat = "0.5.0"
 sqlparser = "0.60.0"
 uuid = { version = "1.18.0", features = ["v4", "serde"] }

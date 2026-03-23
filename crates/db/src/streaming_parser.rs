@@ -334,22 +334,6 @@ impl StreamingSqlParser {
             }
         }
 
-        if self.db_type == DatabaseType::MSSQL && ch == '\n' {
-            let lines: Vec<&str> = self.buffer.lines().collect();
-            if let Some(last_line) = lines.last() {
-                if last_line.trim().to_uppercase() == "GO" {
-                    let stmt_lines: Vec<&str> = lines[..lines.len() - 1].to_vec();
-                    let stmt = stmt_lines.join("\n").trim().to_string();
-                    self.buffer.clear();
-                    self.last_checked_len = 0;
-                    if !stmt.is_empty() {
-                        return Some(stmt);
-                    }
-                    return None;
-                }
-            }
-        }
-
         if self.paren_depth == 0 && self.begin_depth == 0 {
             let trimmed_current = self.buffer.trim_end();
             if trimmed_current.ends_with(&self.delimiter) {
@@ -362,24 +346,6 @@ impl StreamingSqlParser {
                     && !stmt.to_uppercase().starts_with("DELIMITER")
                     && !self.is_pure_comment(stmt)
                 {
-                    let result = stmt.to_string();
-                    self.buffer.clear();
-                    self.last_checked_len = 0;
-                    return Some(result);
-                }
-                self.buffer.clear();
-                self.last_checked_len = 0;
-            } else if self.db_type == DatabaseType::Oracle
-                && self.buffer.trim().ends_with('\n')
-                && self.buffer.trim_end().ends_with('/')
-            {
-                let stmt = self
-                    .buffer
-                    .trim()
-                    .strip_suffix('/')
-                    .unwrap_or(&self.buffer)
-                    .trim();
-                if !stmt.is_empty() {
                     let result = stmt.to_string();
                     self.buffer.clear();
                     self.last_checked_len = 0;
@@ -695,14 +661,6 @@ mod test {
     }
 
     #[test]
-    fn test_oracle_slash_separator() {
-        let sql = "CREATE TABLE t (id NUMBER);\n/\nINSERT INTO t VALUES (1);\n/\nSELECT * FROM t;";
-        let statements = parse_all(SqlSource::Script(sql.to_string()), DatabaseType::Oracle);
-
-        assert!(statements.len() >= 2);
-        assert!(statements[0].contains("CREATE TABLE"));
-    }
-
     #[test]
     fn test_unicode_content() {
         let sql = "INSERT INTO t VALUES ('中文测试');\nINSERT INTO t VALUES ('日本語');\nINSERT INTO t VALUES ('한글');";

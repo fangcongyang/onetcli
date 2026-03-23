@@ -16,7 +16,7 @@ use gpui_component::{
     tab::{Tab, TabBar},
     v_flex,
 };
-use one_core::cloud_sync::{GlobalCloudUser, TeamOption};
+use one_core::{GlobalUserState, TeamOption};
 use one_core::connection_notifier::{ConnectionDataEvent, get_notifier};
 use one_core::gpui_tokio::Tokio;
 use one_core::storage::traits::Repository;
@@ -171,9 +171,6 @@ pub struct RedisFormWindow {
 
     // 备注
     remark_input: Entity<InputState>,
-
-    // 云同步开关
-    sync_enabled: bool,
 
     // 测试状态
     is_testing: bool,
@@ -389,15 +386,10 @@ impl RedisFormWindow {
         // 加载模式和高级设置
         let mut mode = ModeSelection::Standalone;
         let mut use_tls = false;
-        let mut sync_enabled = true;
 
         if let Some(ref p) = existing_params {
             mode = ModeSelection::from_redis_mode(&p.mode);
             use_tls = p.use_tls;
-        }
-
-        if let Some(ref c) = config.editing_connection {
-            sync_enabled = c.sync_enabled;
         }
 
         Self {
@@ -424,7 +416,6 @@ impl RedisFormWindow {
             use_tls,
             connect_timeout_input,
             remark_input,
-            sync_enabled,
             is_testing: false,
             test_result: None,
         }
@@ -605,12 +596,11 @@ impl RedisFormWindow {
 
         let workspace_id = self.get_workspace_id(cx);
         let team_id = self.get_team_id(cx);
-        let owner_id = GlobalCloudUser::get_user(cx).map(|u| u.id);
+        let owner_id = GlobalUserState::get_user(cx).map(|u| u.id);
         let remark = {
             let r = self.remark_input.read(cx).text().to_string();
             if r.is_empty() { None } else { Some(r) }
         };
-        let sync_enabled = self.sync_enabled;
         let is_editing = self.is_editing;
         let editing_id = self.editing_id;
         let editing_cloud_id = self.editing_cloud_id.clone();
@@ -628,7 +618,6 @@ impl RedisFormWindow {
                     .ok_or_else(|| anyhow::anyhow!("ConnectionRepository not found"))?;
 
                 let mut conn = StoredConnection::new_redis(name, params, workspace_id);
-                conn.sync_enabled = sync_enabled;
                 conn.remark = remark;
                 conn.team_id = team_id;
                 if !is_editing {
@@ -694,7 +683,7 @@ impl RedisFormWindow {
     }
 
     /// 渲染基本信息标签页
-    fn render_basic_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_basic_tab(&self, _cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .gap_2()
             .child(self.render_form_row(&t!("Redis.name"), Input::new(&self.name_input)))
@@ -714,27 +703,6 @@ impl RedisFormWindow {
                 &t!("TeamSync.team_label"),
                 Select::new(&self.team_select).w_full(),
             ))
-            .child(
-                self.render_form_row(
-                    &t!("ConnectionForm.cloud_sync"),
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Checkbox::new("sync-enabled")
-                                .checked(self.sync_enabled)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.sync_enabled = !this.sync_enabled;
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(t!("ConnectionForm.cloud_sync_desc").to_string()),
-                        ),
-                ),
-            )
     }
 
     /// 渲染连接模式标签页
