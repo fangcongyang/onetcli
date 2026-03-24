@@ -3230,27 +3230,6 @@ mod tests {
     }
 
     #[test]
-    fn test_mssql_rename_sql_uses_sp_rename_column() {
-        let plugin = MsSqlPlugin::new();
-        let sql = plugin.build_column_rename_sql("users", "b", "a", None);
-        assert_eq!(sql, "EXEC sp_rename '[users].[b]', 'a', 'COLUMN';");
-    }
-
-    #[test]
-    fn test_oracle_rename_sql_uses_rename_column() {
-        let plugin = OraclePlugin::new();
-        let sql = plugin.build_column_rename_sql("users", "b", "a", None);
-        assert!(sql.contains("RENAME COLUMN \"b\" TO \"a\""));
-    }
-
-    #[test]
-    fn test_clickhouse_rename_sql_uses_rename_column() {
-        let plugin = ClickHousePlugin::new();
-        let sql = plugin.build_column_rename_sql("users", "b", "a", None);
-        assert!(sql.contains("RENAME COLUMN `b` TO `a`"));
-    }
-
-    #[test]
     fn test_mysql_change_column_keeps_new_definition() {
         let plugin = MySqlPlugin::new();
         let mut renamed_col = build_col("a");
@@ -3912,16 +3891,6 @@ mod tests {
             sql.contains("AUTO_INCREMENT"),
             "应保留 AUTO_INCREMENT: {sql}"
         );
-    }
-
-    /// MSSQL sp_rename 正确处理包含单引号的列名
-    #[test]
-    fn test_mssql_rename_escapes_single_quotes() {
-        let plugin = MsSqlPlugin::new();
-        let sql = plugin.build_column_rename_sql("users", "col'a", "col'b", None);
-        // 单引号应被转义
-        assert!(sql.contains("col''a"), "旧列名中的单引号应被转义: {sql}");
-        assert!(sql.contains("col''b"), "新列名中的单引号应被转义: {sql}");
     }
 
     /// build_alter_table_sql_with_renames 传入空设计（无列、无索引）

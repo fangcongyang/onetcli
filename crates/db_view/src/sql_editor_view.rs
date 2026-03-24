@@ -1300,17 +1300,6 @@ mod tests {
     }
 
     #[test]
-    fn test_build_explain_sql_oracle() {
-        assert_eq!(
-            SqlEditorTab::build_explain_sql(DatabaseType::Oracle, "select * from users"),
-            Some(
-                "EXPLAIN PLAN FOR select * from users;\nSELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
     fn test_build_explain_sql_mysql_multiple_statements() {
         assert_eq!(
             SqlEditorTab::build_explain_sql(
@@ -1329,20 +1318,6 @@ mod tests {
                 "select ';' as semi; select 2 as id;"
             ),
             Some("EXPLAIN select ';' as semi;\nEXPLAIN select 2 as id".to_string())
-        );
-    }
-
-    #[test]
-    fn test_build_explain_sql_oracle_multiple_statements() {
-        assert_eq!(
-            SqlEditorTab::build_explain_sql(
-                DatabaseType::Oracle,
-                "select * from users; select * from posts;"
-            ),
-            Some(
-                "EXPLAIN PLAN FOR select * from users;\nSELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY());\nEXPLAIN PLAN FOR select * from posts;\nSELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())"
-                    .to_string()
-            )
         );
     }
 

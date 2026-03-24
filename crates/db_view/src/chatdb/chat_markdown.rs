@@ -70,10 +70,7 @@ fn is_sql_language(language: Option<&str>) -> bool {
         return false;
     };
     let lang = language.to_lowercase();
-    matches!(
-        lang.as_str(),
-        "sql" | "mysql" | "postgresql" | "sqlite" | "oracle"
-    )
+    matches!(lang.as_str(), "sql" | "mysql" | "postgresql" | "sqlite")
 }
 
 fn is_sql_statement(code: &str) -> bool {

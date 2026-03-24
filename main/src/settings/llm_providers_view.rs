@@ -209,7 +209,7 @@ impl LlmProvidersView {
     fn render_edit_mode(
         &mut self,
         form: &Entity<ProviderForm>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let is_editing = self.editing_config.is_some();
@@ -262,7 +262,7 @@ impl LlmProvidersView {
             .into_any_element()
     }
 
-    fn render_list_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn render_list_mode(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         v_flex()
             .size_full()
             .gap_4()

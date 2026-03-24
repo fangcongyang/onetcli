@@ -1,26 +1,18 @@
 use std::path::PathBuf;
 
-use gpui::{
-    div, App, AppContext, ClickEvent, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    FontWeight, InteractiveElement, IntoElement, Keystroke, ParentElement, Render, SharedString,
-    Styled, Window,
-};
+use gpui::{div, App, ClickEvent, FontWeight, IntoElement, Keystroke, ParentElement, Styled};
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     clipboard::Clipboard,
-    group_box::GroupBoxVariant,
     h_flex,
     kbd::Kbd,
-    setting::{NumberFieldOptions, SettingField, SettingGroup, SettingItem},
-    v_flex, ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeMode,
+    v_flex, ActiveTheme, IconName, Sizable, Theme, ThemeMode,
 };
 use one_core::storage::manager::get_config_dir;
 use one_core::utils::auto_save_config::AutoSaveConfig;
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
-
-use crate::onetcli_app::GlobalHomePage;
 
 // ============================================================================
 // 数据库配置
@@ -220,6 +212,11 @@ impl AppSettings {
         Theme::global_mut(cx).mode = mode;
         Theme::change(mode, None, cx);
 
+        // 应用字体设置
+        let theme = Theme::global_mut(cx);
+        theme.font_family = self.font_family.clone().into();
+        theme.font_size = gpui::px(self.font_size as f32);
+
         // 同步自动保存配置
         self.sync_auto_save_config(cx);
     }
@@ -248,22 +245,6 @@ pub fn init_settings(cx: &mut App) {
     settings.apply(cx);
     cx.set_global(settings);
 }
-
-fn sync_terminal_settings_to_all(settings: AppSettings, cx: &mut App) {
-    let Some(home) = cx.try_global::<GlobalHomePage>() else {
-        return;
-    };
-    let Some(window_id) = cx.active_window() else {
-        return;
-    };
-    let home_page = home.home_page.clone();
-    let _ = cx.update_window(window_id, move |_, window, cx| {
-        home_page.update(cx, |hp, cx| {
-            hp.apply_terminal_settings_to_all(&settings, window, cx);
-        });
-    });
-}
-
 
 // ============================================================================
 // 快捷键设置页

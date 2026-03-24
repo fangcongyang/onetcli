@@ -43,7 +43,6 @@ use gpui::px;
 
 use gpui_component::dock::{ClosePanel, ToggleZoom};
 use gpui_component::{ActiveTheme, Root};
-use one_core::llm::manager::GlobalProviderState;
 use one_core::tab_container::{
     TabContainer, TabContainerEvent, TabContainerState, TabContentRegistry, TabItem,
 };

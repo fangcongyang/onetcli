@@ -141,11 +141,13 @@ impl PostgresDbConnection {
                 .map(|v| v.to_string()),
 
             // Array types - try to get as string representation
-            _ if col_type.name().ends_with("[]") => {
-                // For arrays, try to get as string
-                row.try_get::<_, Option<String>>(index)
+            // PostgreSQL uses underscore prefix for arrays (e.g., _int4 for int4[])
+            _ if col_type.name().starts_with("_") || col_type.name().ends_with("[]") => {
+                // For arrays, try to get as Vec<String>
+                row.try_get::<_, Option<Vec<String>>>(index)
                     .ok()
                     .flatten()
+                    .map(|arr| format!("{{{}}}", arr.join(", ")))
                     .or_else(|| Some(format!("<array: {}>", col_type.name())))
             }
 

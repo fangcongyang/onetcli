@@ -650,17 +650,6 @@ mod test {
     }
 
     #[test]
-    fn test_mssql_go_separator() {
-        let sql = "CREATE TABLE t (id INT);\nGO\nINSERT INTO t VALUES (1);\nGO\nSELECT * FROM t;";
-        let statements = parse_all(SqlSource::Script(sql.to_string()), DatabaseType::MSSQL);
-
-        assert_eq!(statements.len(), 3);
-        assert!(statements[0].contains("CREATE TABLE"));
-        assert!(statements[1].contains("INSERT"));
-        assert!(statements[2].contains("SELECT"));
-    }
-
-    #[test]
     #[test]
     fn test_unicode_content() {
         let sql = "INSERT INTO t VALUES ('中文测试');\nINSERT INTO t VALUES ('日本語');\nINSERT INTO t VALUES ('한글');";

@@ -2,12 +2,18 @@ use gpui::{
     div, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement, Render, SharedString, Styled, Window,
 };
-use gpui_component::setting::{NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings};
-use gpui_component::{group_box::GroupBoxVariant, h_flex, v_flex, ActiveTheme, IconName, Sizable, Size, Theme, ThemeMode};
+use gpui_component::setting::{
+    NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings,
+};
+use gpui_component::{
+    group_box::GroupBoxVariant, ActiveTheme, IconName, Sizable, Size, Theme, ThemeMode,
+};
 use one_core::popup_window::{open_popup_window, PopupWindowOptions};
 use rust_i18n::t;
 
-use crate::setting_tab::{init_settings, render_about_section, render_shortcuts_section, AppSettings, DatabaseOpenMode};
+use crate::setting_tab::{
+    init_settings, render_about_section, render_shortcuts_section, AppSettings, DatabaseOpenMode,
+};
 use crate::settings::llm_providers_view::LlmProvidersView;
 
 pub struct SettingsWindow {
@@ -28,7 +34,13 @@ impl SettingsWindow {
         }
     }
 
-    fn setting_pages(&self, _cx: &App) -> Vec<SettingPage> {
+    fn setting_pages(&self, window: &mut Window, _cx: &App) -> Vec<SettingPage> {
+        let font_names = window.text_system().all_font_names();
+        let font_options: Vec<(SharedString, SharedString)> = font_names
+            .into_iter()
+            .map(|name| (name.clone().into(), name.into()))
+            .collect();
+
         let llm_view = self.llm_providers_view.clone();
         let default_settings = AppSettings::default();
 
@@ -116,12 +128,7 @@ impl SettingsWindow {
                             SettingItem::new(
                                 t!("Settings.General.Font.font_family"),
                                 SettingField::dropdown(
-                                    vec![
-                                        ("Arial".into(), "Arial".into()),
-                                        ("Helvetica".into(), "Helvetica".into()),
-                                        ("Times New Roman".into(), "Times New Roman".into()),
-                                        ("Courier New".into(), "Courier New".into()),
-                                    ],
+                                    font_options,
                                     |cx: &App| {
                                         SharedString::from(
                                             AppSettings::global(cx).font_family.clone(),
@@ -131,6 +138,12 @@ impl SettingsWindow {
                                         let settings = AppSettings::global_mut(cx);
                                         settings.font_family = val.to_string();
                                         settings.save();
+                                        gpui_component::Theme::global_mut(cx).font_family = val;
+                                        if let Some(window) = cx.active_window() {
+                                            let _ = cx.update_window(window, |_, window, _| {
+                                                window.refresh()
+                                            });
+                                        }
                                     },
                                 )
                                 .default_value(SharedString::from(default_settings.font_family)),
@@ -151,6 +164,13 @@ impl SettingsWindow {
                                         let settings = AppSettings::global_mut(cx);
                                         settings.font_size = val;
                                         settings.save();
+                                        let theme = gpui_component::Theme::global_mut(cx);
+                                        theme.font_size = gpui::px(val as f32);
+                                        if let Some(window) = cx.active_window() {
+                                            let _ = cx.update_window(window, |_, window, _| {
+                                                window.refresh();
+                                            });
+                                        }
                                     },
                                 )
                                 .default_value(default_settings.font_size),
@@ -224,8 +244,7 @@ impl SettingsWindow {
                                         ),
                                         (
                                             "workspace".into(),
-                                            t!("Settings.General.Database.workspace_mode")
-                                                .into(),
+                                            t!("Settings.General.Database.workspace_mode").into(),
                                         ),
                                     ],
                                     |cx: &App| {
@@ -297,22 +316,20 @@ impl SettingsWindow {
             // 快捷键页面
             SettingPage::new(t!("Settings.Shortcuts.title"))
                 .icon(IconName::Key)
-                .group(SettingGroup::new().item(
-                    SettingItem::render(move |_options, _window, cx| render_shortcuts_section(cx)),
-                )),
+                .group(SettingGroup::new().item(SettingItem::render(
+                    move |_options, _window, cx| render_shortcuts_section(cx),
+                ))),
             SettingPage::new(t!("LlmProviders.title"))
                 .icon(IconName::Bot)
-                .group(SettingGroup::new().item(
-                    SettingItem::render(move |_options, _window, _cx| {
-                        llm_view.clone().into_any_element()
-                    }),
-                )),
+                .group(SettingGroup::new().item(SettingItem::render(
+                    move |_options, _window, _cx| llm_view.clone().into_any_element(),
+                ))),
             // 关于页面
             SettingPage::new(t!("Settings.About.title"))
                 .icon(IconName::Info)
-                .group(SettingGroup::new().item(
-                    SettingItem::render(move |_options, _window, cx| render_about_section(cx)),
-                )),
+                .group(SettingGroup::new().item(SettingItem::render(
+                    move |_options, _window, cx| render_about_section(cx),
+                ))),
         ]
     }
 }
@@ -324,7 +341,7 @@ impl Focusable for SettingsWindow {
 }
 
 impl Render for SettingsWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !cx.has_global::<AppSettings>() {
             init_settings(cx);
         }
@@ -333,7 +350,7 @@ impl Render for SettingsWindow {
             Settings::new("settings-window")
                 .with_size(self.size)
                 .with_group_variant(self.group_variant)
-                .pages(self.setting_pages(cx)),
+                .pages(self.setting_pages(window, cx)),
         )
     }
 }

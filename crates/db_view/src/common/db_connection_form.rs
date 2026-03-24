@@ -848,7 +848,6 @@ impl DbConnectionForm {
             }
         }
 
-        self.validate_oracle_client(cx)?;
         self.validate_ssh_tunnel(cx)?;
         Ok(())
     }
@@ -912,11 +911,6 @@ impl DbConnectionForm {
             }
         }
 
-        Ok(())
-    }
-
-    fn validate_oracle_client(&self, _cx: &App) -> Result<(), String> {
-        // Oracle support removed
         Ok(())
     }
 

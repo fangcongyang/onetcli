@@ -96,8 +96,6 @@ impl LanguageMatcher {
             "postgresql",
             "postgres",
             "sqlite",
-            "oracle",
-            "plsql",
         ])
     }
 
