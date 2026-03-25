@@ -8,17 +8,17 @@ use crate::sidebar::{DatabaseSidebar, DatabaseSidebarEvent};
 use crate::sql_editor_view::SqlEditorTab;
 use db::GlobalDbState;
 use gpui::{
-    AnyElement, App, AppContext, AsyncApp, Axis, Bounds, Context, Element, Entity, EventEmitter,
-    FocusHandle, Focusable, FontWeight, Hsla, InteractiveElement, IntoElement, MouseMoveEvent,
-    MouseUpEvent, ParentElement, Pixels, Point, Render, SharedString, Style, Styled, Task, Window,
-    div, prelude::FluentBuilder, px,
+    actions, AnyElement, App, AppContext, AsyncApp, Axis, Bounds, Context, Element, Entity,
+    EventEmitter, FocusHandle, Focusable, FontWeight, Hsla, InteractiveElement, IntoElement,
+    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, SharedString, Style,
+    Styled, Task, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{ActiveTheme, Icon, IconName, Sizable, Size, h_flex, v_flex};
 use one_core::ai_chat::{CodeBlockAction, LanguageMatcher};
 use one_core::layout::{
     SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, TOOLBAR_WIDTH,
 };
-use one_core::storage::{ActiveConnections, Workspace};
+use one_core::storage::{ActiveConnections, DatabaseType, Workspace};
 use one_core::{
     storage::StoredConnection,
     tab_container::{TabContainer, TabContent, TabContentEvent, TabItem},
@@ -26,6 +26,24 @@ use one_core::{
 use one_ui::resize_handle::{HandlePlacement, ResizePanel, resize_handle};
 use rust_i18n::t;
 use uuid::Uuid;
+
+actions!(
+    database_tab,
+    [
+        NewQuery,
+    ]
+);
+
+const DATABASE_TAB_CONTEXT: &str = "DatabaseTab";
+
+pub fn init(cx: &mut App) {
+    cx.bind_keys([
+        #[cfg(target_os = "macos")]
+        gpui::KeyBinding::new("cmd-t", NewQuery, Some(DATABASE_TAB_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        gpui::KeyBinding::new("ctrl-t", NewQuery, Some(DATABASE_TAB_CONTEXT)),
+    ]);
+}
 
 const PANEL_MIN_SIZE: Pixels = px(100.0);
 const TREE_PANEL_DEFAULT_SIZE: Pixels = px(250.0);
@@ -56,6 +74,67 @@ pub struct DatabaseTabView {
 }
 
 impl DatabaseTabView {
+    /// 创建新查询（快捷键处理）
+    fn create_new_query(&mut self, _: &NewQuery, window: &mut Window, cx: &mut Context<Self>) {
+        let (connection_id, database, schema, database_type) = if let Some(selected_node_id) = self
+            .db_tree_view
+            .read(cx)
+            .get_selected_node_id()
+        {
+            if let Some(node) = self.db_tree_view.read(cx).get_node(&selected_node_id) {
+                (
+                    node.connection_id.clone(),
+                    node.get_database_name(),
+                    node.get_schema_name(),
+                    node.database_type,
+                )
+            } else {
+                self.get_default_connection_info()
+            }
+        } else {
+            self.get_default_connection_info()
+        };
+
+        let tab_id = format!("query-{}", Uuid::new_v4());
+        let tab_id_clone = tab_id.clone();
+        let conn_id_clone = connection_id.clone();
+        let database_clone = database.clone();
+        let schema_clone = schema.clone();
+
+        self.tab_container.update(cx, |container, cx| {
+            container.activate_or_add_tab_lazy(
+                tab_id.clone(),
+                move |window, cx| {
+                    let sql_editor = cx.new(|cx| {
+                        SqlEditorTab::new_with_config(
+                            t!("Query.new_query").to_string(),
+                            connection_id.clone(),
+                            database_type,
+                            None,
+                            database_clone.clone(),
+                            schema_clone.clone(),
+                            window,
+                            cx,
+                        )
+                    });
+                    TabItem::new(tab_id_clone.clone(), conn_id_clone.clone(), sql_editor)
+                },
+                window,
+                cx,
+            );
+        });
+    }
+
+    fn get_default_connection_info(&self) -> (String, Option<String>, Option<String>, DatabaseType) {
+        if let Some(conn) = self.connections.first() {
+            if let Ok(db_config) = conn.to_db_connection() {
+                let connection_id = conn.id.map(|id| id.to_string()).unwrap_or_default();
+                return (connection_id, None, None, db_config.database_type);
+            }
+        }
+        (String::new(), None, None, DatabaseType::SQLite)
+    }
+
     pub fn new_with_active_conn(
         workspace: Option<Workspace>,
         connections: Vec<StoredConnection>,
@@ -560,6 +639,8 @@ impl Render for DatabaseTabView {
 
         div()
             .track_focus(&self.focus_handle)
+            .key_context(DATABASE_TAB_CONTEXT)
+            .on_action(cx.listener(Self::create_new_query))
             .size_full()
             .when(!is_connected_flag, |el: gpui::Div| {
                 el.child(self.render_connection_status(cx))

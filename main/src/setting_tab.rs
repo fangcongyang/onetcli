@@ -82,6 +82,9 @@ pub struct AppSettings {
     /// SQL查询自动保存的间隔（秒），默认5秒
     #[serde(default = "default_auto_save_interval")]
     pub sql_auto_save_interval: f64,
+    /// 启动时是否最大化窗口
+    #[serde(default = "default_true")]
+    pub start_maximized: bool,
 }
 
 fn default_font_family() -> String {
@@ -128,6 +131,7 @@ impl Default for AppSettings {
             database_open_mode: DatabaseOpenMode::default(),
             enable_sql_auto_save: true,
             sql_auto_save_interval: default_auto_save_interval(),
+            start_maximized: true,
         }
     }
 }

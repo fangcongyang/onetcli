@@ -152,6 +152,7 @@ pub fn init(cx: &mut App) {
         cache.start_cleanup_task(cx);
     }
     terminal_view::init(cx);
+    db_view::init(cx);
     redis_view::init(cx);
     mongodb_view::init(cx);
     crate::home_tab::init(cx);

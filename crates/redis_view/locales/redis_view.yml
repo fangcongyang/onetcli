@@ -260,6 +260,14 @@ KeyValueView:
     en: "Save"
     zh-CN: "保存"
     zh-HK: "保存"
+  no_changes_to_save:
+    en: "No changes to save"
+    zh-CN: "没有需要保存的更改"
+    zh-HK: "沒有需要保存的更改"
+  refreshing:
+    en: "Refreshing..."
+    zh-CN: "刷新中..."
+    zh-HK: "刷新中..."
   input_value_placeholder:
     en: "Enter value"
     zh-CN: "输入值"

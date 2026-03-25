@@ -45,4 +45,5 @@ pub use sidebar::{RedisSidebar, RedisSidebarEvent};
 pub fn init(cx: &mut App) {
     cx.set_global(GlobalRedisState::new());
     redis_cli_view::init(cx);
+    key_value_view::init(cx);
 }

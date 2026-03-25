@@ -1,8 +1,8 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, DefiniteLength, Edges, EdgesRefinement, Entity, InteractiveElement as _,
-    IntoElement, IsZero, MouseButton, ParentElement as _, Rems, RenderOnce, StyleRefinement,
-    Styled, TextAlign, Window, div, px, relative,
+    div, px, relative, AnyElement, App, DefiniteLength, Edges, EdgesRefinement, Entity,
+    InteractiveElement as _, IntoElement, IsZero, MouseButton, ParentElement as _, Rems,
+    RenderOnce, StyleRefinement, Styled, TextAlign, Window,
 };
 
 use crate::button::{Button, ButtonVariants as _};
@@ -10,9 +10,9 @@ use crate::input::clear_button;
 use crate::input::element::{LINE_NUMBER_RIGHT_MARGIN, RIGHT_MARGIN};
 use crate::scroll::Scrollbar;
 use crate::spinner::Spinner;
-use crate::{ActiveTheme, v_flex};
+use crate::{h_flex, Selectable, StyledExt};
+use crate::{v_flex, ActiveTheme};
 use crate::{IconName, Size};
-use crate::{Selectable, StyledExt, h_flex};
 use crate::{Sizable, StyleSized};
 
 use super::InputState;
@@ -295,6 +295,7 @@ impl RenderOnce for Input {
                     .on_action(window.listener_for(&self.state, InputState::delete_previous_word))
                     .on_action(window.listener_for(&self.state, InputState::delete_next_word))
                     .on_action(window.listener_for(&self.state, InputState::enter))
+                    .on_action(window.listener_for(&self.state, InputState::run_with_selection))
                     .on_action(window.listener_for(&self.state, InputState::escape))
                     .on_action(window.listener_for(&self.state, InputState::paste))
                     .on_action(window.listener_for(&self.state, InputState::cut))

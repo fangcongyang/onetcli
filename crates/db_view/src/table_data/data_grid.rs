@@ -6,7 +6,7 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme as _, Disableable as _, IconName, Sizable as _, Size, WindowExt, button::Button,
-    h_flex, v_flex,
+    h_flex, notification::Notification, v_flex,
 };
 use one_ui::edit_table::{Column, EditTable, EditTableEvent, EditTableState};
 use rust_i18n::t;
@@ -33,8 +33,23 @@ use std::path::PathBuf;
 
 actions!(
     data_grid,
-    [Page500, Page1000, Page2000, Page10000, Page100000]
+    [Page500, Page1000, Page2000, Page10000, Page100000, SaveChanges, RefreshData]
 );
+
+const DATA_GRID_CONTEXT: &str = "DataGrid";
+
+pub fn init(cx: &mut App) {
+    cx.bind_keys([
+        #[cfg(target_os = "macos")]
+        gpui::KeyBinding::new("cmd-s", SaveChanges, Some(DATA_GRID_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        gpui::KeyBinding::new("ctrl-s", SaveChanges, Some(DATA_GRID_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        gpui::KeyBinding::new("cmd-r", RefreshData, Some(DATA_GRID_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        gpui::KeyBinding::new("ctrl-r", RefreshData, Some(DATA_GRID_CONTEXT)),
+    ]);
+}
 
 fn build_header_order_by_clause(
     db_manager: &DbManager,
@@ -2060,7 +2075,7 @@ impl DataGrid {
                 if trimmed.is_empty() || trimmed == t!("TableDataGrid.no_changes_sql_marker") {
                     Err(t!("TableDataGrid.no_changes").to_string())
                 } else {
-                    Ok(plugin.format_sql(&sql))
+                    Ok(plugin.format_sql(&sql, true))
                 }
             }
             Err(_) => Err(t!("TableDataGrid.plugin_unavailable").to_string()),
@@ -2420,6 +2435,24 @@ impl DataGrid {
             )
             .into_any_element()
     }
+
+    fn on_save_changes(
+        &mut self,
+        _: &SaveChanges,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.config.editable && self.has_unsaved_changes(cx) {
+            self.handle_save_changes(&ClickEvent::default(), window, cx);
+        } else if self.config.editable {
+            let msg: SharedString = t!("TableDataGrid.no_changes_to_save").into();
+            window.push_notification(Notification::info(msg).autohide(true), cx);
+        }
+    }
+
+    fn on_refresh_data(&mut self, _: &RefreshData, _window: &mut Window, cx: &mut Context<Self>) {
+        self.refresh_data(cx);
+    }
 }
 
 impl Render for DataGrid {
@@ -2427,6 +2460,9 @@ impl Render for DataGrid {
         let is_table_data = self.config.usage == DataGridUsage::TableData;
 
         v_flex()
+            .key_context(DATA_GRID_CONTEXT)
+            .on_action(cx.listener(Self::on_save_changes))
+            .on_action(cx.listener(Self::on_refresh_data))
             .when(is_table_data, |this| {
                 this.on_action(cx.listener(Self::handle_page_change_500))
                     .on_action(cx.listener(Self::handle_page_change_1000))

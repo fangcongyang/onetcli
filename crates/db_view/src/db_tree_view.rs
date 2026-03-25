@@ -2022,6 +2022,11 @@ impl DbTreeView {
         }
         None
     }
+
+    /// 获取当前选中的节点 ID
+    pub fn get_selected_node_id(&self) -> Option<String> {
+        self.selected_node_id.clone()
+    }
 }
 
 impl Render for DbTreeView {

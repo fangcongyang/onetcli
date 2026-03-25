@@ -4,12 +4,12 @@
 //! https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/input.rs
 use anyhow::Result;
 use gpui::{
-    Action, App, AppContext, Bounds, ClickEvent, ClipboardItem, Context, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, Half, InteractiveElement as _,
-    IntoElement, KeyBinding, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, ScrollWheelEvent,
-    ShapedLine, SharedString, Styled as _, Subscription, Task, TextAlign, UTF16Selection, Window,
-    actions, div, point, prelude::FluentBuilder as _, px,
+    actions, div, point, prelude::FluentBuilder as _, px, Action, App, AppContext, Bounds,
+    ClickEvent, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle,
+    Focusable, Half, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render,
+    ScrollHandle, ScrollWheelEvent, ShapedLine, SharedString, Styled as _, Subscription, Task,
+    TextAlign, UTF16Selection, Window,
 };
 use ropey::{Rope, RopeSlice};
 use serde::Deserialize;
@@ -22,21 +22,21 @@ use super::{
     blink_cursor::BlinkCursor, change::Change, element::TextElement, mask_pattern::MaskPattern,
     mode::InputMode, number_input, text_wrapper::TextWrapper,
 };
-use crate::Icon;
-use crate::Size;
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::input::blink_cursor::CURSOR_WIDTH;
 use crate::input::movement::MoveDirection;
 use crate::input::{
-    HoverDefinition, Lsp, Position,
     element::RIGHT_MARGIN,
     popovers::{ContextMenu, DiagnosticPopover, HoverPopover, MouseContextMenu},
     search::{self, SearchPanel},
     text_wrapper::LineLayout,
+    HoverDefinition, Lsp, Position,
 };
 use crate::input::{InlineCompletion, RopeExt as _, Selection};
-use crate::{Root, history::History};
+use crate::Icon;
+use crate::Size;
 use crate::{highlighter::DiagnosticSet, input::text_wrapper::LineItem};
+use crate::{history::History, Root};
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = input, no_json)]
@@ -89,6 +89,7 @@ actions!(
         ToggleCodeActions,
         Search,
         GoToDefinition,
+        RunWithSelection,
     ]
 );
 
@@ -96,6 +97,7 @@ actions!(
 pub enum InputEvent {
     Change,
     PressEnter { secondary: bool },
+    RunWithSelection,
     Focus,
     Blur,
 }
@@ -225,6 +227,10 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("enter", Enter { secondary: false }, Some(CONTEXT)),
         KeyBinding::new("shift-enter", Enter { secondary: true }, Some(CONTEXT)),
         KeyBinding::new("secondary-enter", Enter { secondary: true }, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-enter", RunWithSelection, Some(CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-enter", RunWithSelection, Some(CONTEXT)),
         KeyBinding::new("escape", Escape, Some(CONTEXT)),
         KeyBinding::new("up", MoveUp, Some(CONTEXT)),
         KeyBinding::new("down", MoveDown, Some(CONTEXT)),
@@ -1418,6 +1424,15 @@ impl InputState {
         cx.emit(InputEvent::PressEnter {
             secondary: action.secondary,
         });
+    }
+
+    pub(super) fn run_with_selection(
+        &mut self,
+        _: &RunWithSelection,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.emit(InputEvent::RunWithSelection);
     }
 
     pub(super) fn clean(&mut self, window: &mut Window, cx: &mut Context<Self>) {

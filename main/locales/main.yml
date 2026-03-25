@@ -612,6 +612,21 @@ Settings:
         zh-CN: 根据系统设置自动切换主题
         zh-HK: 根據系統設定自動切換主題
 
+    # 窗口设置
+    Window:
+      group_title:
+        en: Window
+        zh-CN: 窗口
+        zh-HK: 窗口
+      start_maximized:
+        en: Start Maximized
+        zh-CN: 启动时最大化
+        zh-HK: 啟動時最大化
+      start_maximized_desc:
+        en: Maximize the window when the application starts
+        zh-CN: 应用启动时最大化窗口
+        zh-HK: 應用啟動時最大化窗口
+
     # 字体设置
     Font:
       group_title:

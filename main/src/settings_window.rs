@@ -123,6 +123,23 @@ impl SettingsWindow {
                             ),
                         ]),
                     SettingGroup::new()
+                        .title(t!("Settings.General.Window.group_title"))
+                        .items(vec![SettingItem::new(
+                            t!("Settings.General.Window.start_maximized"),
+                            SettingField::switch(
+                                |cx: &App| AppSettings::global(cx).start_maximized,
+                                |val: bool, cx: &mut App| {
+                                    let settings = AppSettings::global_mut(cx);
+                                    settings.start_maximized = val;
+                                    settings.save();
+                                },
+                            )
+                            .default_value(default_settings.start_maximized),
+                        )
+                        .description(
+                            t!("Settings.General.Window.start_maximized_desc").to_string(),
+                        )]),
+                    SettingGroup::new()
                         .title(t!("Settings.General.Font.group_title"))
                         .item(
                             SettingItem::new(

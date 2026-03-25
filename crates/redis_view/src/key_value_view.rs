@@ -4,10 +4,20 @@ use crate::{
     GlobalRedisState, HashField, KeyInfo, KeyValueContent, KeyValueDetail, RedisKeyType, ZSetMember,
 };
 use gpui::{
-    App, AppContext, AsyncApp, ClipboardItem, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    actions, App, AppContext, AsyncApp, ClipboardItem, Context, Entity, EventEmitter, FocusHandle,
+    Focusable, InteractiveElement, IntoElement, KeyBinding, ParentElement, Render, SharedString,
     StatefulInteractiveElement, Styled, Task, Window, div, prelude::FluentBuilder, px, relative,
 };
+
+actions!(
+    key_value_view,
+    [
+        SaveValue,
+        RefreshKey,
+    ]
+);
+
+const KEY_VALUE_VIEW_CONTEXT: &str = "KeyValueView";
 use gpui_component::{
     ActiveTheme, Icon, IconName, IndexPath, Sizable, Size, WindowExt as _,
     button::{Button, ButtonVariants as _},
@@ -16,6 +26,7 @@ use gpui_component::{
     h_flex,
     highlighter::Language,
     input::{Input, InputEvent, InputState},
+    notification::Notification,
     radio::Radio,
     select::{Select, SelectEvent, SelectItem, SelectState},
     spinner::Spinner,
@@ -156,6 +167,20 @@ pub struct KeyValueView {
     list_insert_position: ListInsertPosition,
     /// 是否允许关闭标签页
     closeable: bool,
+}
+
+/// 注册键绑定
+pub fn init(cx: &mut App) {
+    cx.bind_keys([
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-s", SaveValue, Some(KEY_VALUE_VIEW_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-s", SaveValue, Some(KEY_VALUE_VIEW_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-r", RefreshKey, Some(KEY_VALUE_VIEW_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-r", RefreshKey, Some(KEY_VALUE_VIEW_CONTEXT)),
+    ]);
 }
 
 impl KeyValueView {
@@ -2785,6 +2810,27 @@ impl KeyValueView {
                     .child(t!("KeyValueView.load_failed", error = error).to_string()),
             )
     }
+
+    /// 保存值（快捷键处理）
+    fn save_value(&mut self, _: &SaveValue, window: &mut Window, cx: &mut Context<Self>) {
+        let is_string = matches!(
+            self.key_info.as_ref().map(|k| k.key_type),
+            Some(RedisKeyType::String)
+        );
+        if is_string && self.is_dirty {
+            self.save_string_value(cx);
+        } else if is_string {
+            let msg: SharedString = t!("KeyValueView.no_changes_to_save").into();
+            window.push_notification(Notification::info(msg).autohide(true), cx);
+        }
+    }
+
+    /// 刷新键值（快捷键处理）
+    fn refresh_key(&mut self, _: &RefreshKey, _window: &mut Window, cx: &mut Context<Self>) {
+        if let (Some(conn_id), Some(key)) = (self.connection_id.clone(), self.current_key.clone()) {
+            self.load_key(conn_id, self.db_index, key, cx);
+        }
+    }
 }
 
 impl EventEmitter<KeyValueViewEvent> for KeyValueView {}
@@ -2801,6 +2847,9 @@ impl Render for KeyValueView {
         self.apply_pending_editor_value(window, cx);
 
         v_flex()
+            .key_context(KEY_VALUE_VIEW_CONTEXT)
+            .on_action(cx.listener(Self::save_value))
+            .on_action(cx.listener(Self::refresh_key))
             .size_full()
             .bg(cx.theme().background)
             .when(matches!(self.load_state, LoadState::Empty), |this| {

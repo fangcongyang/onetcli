@@ -1,6 +1,6 @@
 use gpui::{
-    App, AppContext as _, ClickEvent, Context, Entity, InteractiveElement, IntoElement,
-    ParentElement as _, Render, Styled, Subscription, Window, div,
+    div, App, AppContext as _, ClickEvent, Context, Entity, InteractiveElement, IntoElement,
+    ParentElement as _, Render, Styled, Subscription, Window,
 };
 
 use crate::section;
@@ -169,6 +169,7 @@ impl InputStory {
             InputEvent::PressEnter { secondary } => println!("PressEnter secondary: {}", secondary),
             InputEvent::Focus => println!("Focus"),
             InputEvent::Blur => println!("Blur"),
+            InputEvent::RunWithSelection => println!("RunWithSelection"),
         };
     }
 

@@ -6,7 +6,8 @@ use db::sql_editor::sql_context_inferrer::{ContextInferrer, SqlContext as Inferr
 use db::sql_editor::sql_symbol_table::SymbolTable;
 use db::sql_editor::sql_tokenizer::SqlTokenizer;
 use gpui::{
-    App, AppContext, Context, Entity, IntoElement, Render, Styled as _, Subscription, Task, Window,
+    App, AppContext, Context, Entity, EventEmitter, IntoElement, Render, Styled as _, Subscription,
+    Task, Window,
 };
 use gpui_component::highlighter::Language;
 use gpui_component::input::{
@@ -22,7 +23,11 @@ use lsp_types::{
 use rust_i18n::t;
 use sum_tree::Bias;
 
-/// Simple schema hints to improve autocomplete suggestions.
+#[derive(Debug, Clone)]
+pub enum SqlEditorEvent {
+    RunWithSelection,
+}
+
 #[derive(Clone, Default)]
 pub struct SqlSchema {
     pub tables: Vec<(String, String)>,  // (name, doc)
@@ -1348,7 +1353,10 @@ impl SqlEditor {
 
         let _subscriptions =
             vec![
-                cx.subscribe_in(&editor, window, move |_, _, _: &InputEvent, _window, cx| {
+                cx.subscribe_in(&editor, window, move |_, _, event: &InputEvent, _window, cx| {
+                    if matches!(event, InputEvent::RunWithSelection) {
+                        cx.emit(SqlEditorEvent::RunWithSelection);
+                    }
                     cx.notify()
                 }),
             ];
@@ -1478,3 +1486,5 @@ impl Render for SqlEditor {
         Input::new(&self.editor).size_full()
     }
 }
+
+impl EventEmitter<SqlEditorEvent> for SqlEditor {}

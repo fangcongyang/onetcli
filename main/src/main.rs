@@ -66,6 +66,14 @@ fn main() {
         cx.spawn(async move |cx| {
             cx.open_window(options, |window, cx| {
                 window.activate_window();
+
+                // 根据设置决定是否最大化窗口
+                if let Some(settings) = cx.try_global::<setting_tab::AppSettings>() {
+                    if settings.start_maximized {
+                        window.zoom_window();
+                    }
+                }
+
                 update::schedule_update_check(window, cx);
                 let view = cx.new(|cx| OnetCliApp::new(window, cx));
                 cx.new(|cx| Root::new(view, window, cx))

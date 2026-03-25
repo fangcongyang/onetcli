@@ -174,8 +174,8 @@ pub trait DatabasePlugin: Send + Sync {
     }
 
     /// Format SQL for display (each database can customize this)
-    fn format_sql(&self, sql: &str) -> String {
-        crate::format_sql(sql)
+    fn format_sql(&self, sql: &str, uppercase: bool) -> String {
+        crate::format_sql(sql, uppercase)
     }
 
     /// Check if a SQL statement is a query (returns rows)

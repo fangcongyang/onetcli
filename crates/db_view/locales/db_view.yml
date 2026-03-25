@@ -1941,6 +1941,14 @@ TableDataGrid:
     en: "Failed to load data: %{error}"
     zh-CN: "数据加载失败: %{error}"
     zh-HK: "資料載入失敗: %{error}"
+  no_changes_to_save:
+    en: "No changes to save"
+    zh-CN: "没有需要保存的更改"
+    zh-HK: "沒有需要保存的更改"
+  refreshing:
+    en: "Refreshing..."
+    zh-CN: "刷新中..."
+    zh-HK: "刷新中..."
   export_not_supported:
     en: Export is not supported for the current result
     zh-CN: 当前结果不支持导出

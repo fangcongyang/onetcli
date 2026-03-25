@@ -3,9 +3,9 @@ use crate::sql_result_tab::SqlResultTabContainer;
 use db::{DbManager, GlobalDbState, SqlSource, StreamingSqlParser, format_sql};
 use gpui::prelude::*;
 use gpui::{
-    App, AppContext, AsyncApp, Axis, Bounds, ClickEvent, Context, Element, Entity, EventEmitter,
-    FocusHandle, Focusable, IntoElement, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
-    Point, Render, SharedString, Styled, Task, WeakEntity, Window, div, px,
+    actions, App, AppContext, AsyncApp, Axis, Bounds, ClickEvent, Context, Element, Entity,
+    EventEmitter, FocusHandle, Focusable, IntoElement, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Pixels, Point, Render, SharedString, Styled, Task, WeakEntity, Window, div, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{InputContextMenuItem, InputEvent};
@@ -28,6 +28,24 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use tracing::error;
+
+actions!(
+    sql_editor,
+    [
+        RunSelection,
+    ]
+);
+
+const SQL_EDITOR_CONTEXT: &str = "SqlEditor";
+
+pub fn init(cx: &mut App) {
+    cx.bind_keys([
+        #[cfg(target_os = "macos")]
+        gpui::KeyBinding::new("cmd-enter", RunSelection, Some(SQL_EDITOR_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        gpui::KeyBinding::new("ctrl-enter", RunSelection, Some(SQL_EDITOR_CONTEXT)),
+    ]);
+}
 
 const PANEL_MIN_SIZE: Pixels = px(100.0);
 const RESULT_PANEL_DEFAULT_SIZE: Pixels = px(400.0);
@@ -122,6 +140,7 @@ impl SqlEditorTab {
         instance.configure_editor_context_menu(cx);
         instance.bind_select_event(cx);
         instance.bind_auto_save(auto_save_seq, is_dirty, window, cx);
+        instance.bind_run_with_selection(editor, window, cx);
         instance.load_databases_async(
             initial_database,
             initial_schema,
@@ -249,6 +268,34 @@ impl SqlEditorTab {
                     })
                     .detach();
                 }
+            }
+        })
+        .detach();
+    }
+
+    fn bind_run_with_selection(
+        &self,
+        editor: Entity<crate::sql_editor::SqlEditor>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let view = cx.entity().clone();
+        cx.subscribe(&editor, move |_, _, event: &crate::sql_editor::SqlEditorEvent, cx| {
+            if matches!(event, crate::sql_editor::SqlEditorEvent::RunWithSelection) {
+                let view_clone = view.clone();
+                cx.spawn(async move |_weak_entity, cx: &mut AsyncApp| {
+                    let _ = cx.update(|cx| {
+                        if let Some(window_id) = cx.active_window() {
+                            cx.update_window(window_id, move |_entity, window, cx| {
+                                view_clone.update(cx, |this, cx| {
+                                    this.handle_run_selected_query(window, cx);
+                                });
+                            })
+                            .ok();
+                        }
+                    });
+                })
+                .detach();
             }
         })
         .detach();
@@ -795,7 +842,7 @@ impl SqlEditorTab {
         cx.spawn(async move |entity: WeakEntity<Self>, cx: &mut AsyncApp| {
             entity
                 .update(cx, |this, cx| {
-                    let formatted = format_sql(&text);
+                    let formatted = format_sql(&text, true);
                     if let Some(window_id) = window_option {
                         cx.update_window(window_id, move |_entity, window, cx| {
                             this.editor
@@ -1116,7 +1163,10 @@ impl Render for SqlEditorTab {
         let results_visible = self.sql_result_tab_container.read(cx).is_visible(cx);
         let view = cx.entity().clone();
 
-        let mut div = v_flex().size_full();
+        let mut div = v_flex()
+            .key_context(SQL_EDITOR_CONTEXT)
+            .on_action(cx.listener(Self::handle_run_selection))
+            .size_full();
         if has_results && results_visible {
             div = div
                 .child(self.render_has_results(window, cx))
@@ -1125,6 +1175,12 @@ impl Render for SqlEditorTab {
             div = div.child(self.render_sql_editor(cx));
         }
         div
+    }
+}
+
+impl SqlEditorTab {
+    fn handle_run_selection(&mut self, _: &RunSelection, window: &mut Window, cx: &mut Context<Self>) {
+        self.handle_run_selected_query(window, cx);
     }
 }
 

@@ -1,5 +1,7 @@
 rust_i18n::i18n!("locales", fallback = "en");
 
+use gpui::App;
+
 pub mod chatdb;
 pub mod common;
 pub mod connection_form_window;
@@ -25,3 +27,9 @@ pub mod table_designer_tab;
 
 pub use common::DatabaseFormEvent;
 pub use one_core::ai_chat::ask_ai::{AskAiButton, emit_ask_ai_event, init_ask_ai_notifier};
+
+pub fn init(cx: &mut App) {
+    table_data::data_grid::init(cx);
+    database_tab::init(cx);
+    sql_editor_view::init(cx);
+}
