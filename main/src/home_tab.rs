@@ -1153,7 +1153,33 @@ impl HomePage {
                                     .when(is_selected, |this| this.font_weight(FontWeight::MEDIUM))
                                     .child(filter_type.label()),
                             )
-                    })),
+                    }))
+                    .child(
+                        // API 测试入口
+                        div()
+                            .id("api-tester")
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .w_full()
+                            .px_3()
+                            .py_2()
+                            .cursor_pointer()
+                            .rounded_lg()
+                            .overflow_hidden()
+                            .bg(cx.theme().sidebar)
+                            .hover(|style| style.bg(cx.theme().sidebar_accent))
+                            .on_click(cx.listener(move |this: &mut HomePage, _, window, cx| {
+                                this.add_api_tab(window, cx);
+                            }))
+                            .child(Icon::new(IconName::Globe).color().with_size(Size::Large))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child("API Tester"),
+                            )
+                    ),
             )
             .child(
                 // 底部区域：主题切换、设置和用户头像

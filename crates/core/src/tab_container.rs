@@ -148,6 +148,9 @@ pub trait TabContent: EventEmitter<TabContentEvent> + Render + Focusable {
     fn dump(&self, cx: &App) -> serde_json::Value {
         serde_json::Value::Null
     }
+
+    /// Restore tab state from serialized data
+    fn restore(&mut self, _state: serde_json::Value, _cx: &mut Context<Self>) {}
 }
 
 // ============================================================================
@@ -170,6 +173,7 @@ pub trait TabContentView: 'static + Send + Sync {
     fn focus_handle(&self, cx: &App) -> FocusHandle;
     fn view(&self) -> AnyView;
     fn dump(&self, cx: &App) -> serde_json::Value;
+    fn restore(&self, state: serde_json::Value, cx: &mut App);
 }
 
 /// Blanket implementation: Entity<T: TabContent> automatically implements TabContentView
@@ -221,6 +225,10 @@ impl<T: TabContent> TabContentView for Entity<T> {
 
     fn dump(&self, cx: &App) -> serde_json::Value {
         self.read(cx).dump(cx)
+    }
+
+    fn restore(&self, state: serde_json::Value, cx: &mut App) {
+        self.update(cx, |this, cx| this.restore(state, cx));
     }
 }
 

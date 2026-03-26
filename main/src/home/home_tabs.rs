@@ -1,5 +1,6 @@
 use crate::home_tab::HomePage;
 use crate::setting_tab::{AppSettings, DatabaseOpenMode};
+use api_view::ApiTabView;
 use db_view::chatdb::chat_panel::ChatPanel;
 use db_view::database_tab::DatabaseTabView;
 use gpui::AppContext;
@@ -730,5 +731,23 @@ impl HomePage {
                 // 其他类型暂不支持复制
             }
         }
+    }
+
+    pub(crate) fn add_api_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let tab_container = self.tab_container.clone();
+        let tab_id = "api-tab";
+        window.defer(cx, move |window, cx| {
+            tab_container.update(cx, |tc, cx| {
+                tc.activate_or_add_tab_lazy(
+                    tab_id.to_string(),
+                    |window, cx| {
+                        let api_view = cx.new(|cx| ApiTabView::new(window, cx));
+                        TabItem::new(tab_id.to_string(), "api", api_view)
+                    },
+                    window,
+                    cx,
+                );
+            });
+        });
     }
 }

@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use gpui::{
-    Along, App, Axis, Bounds, Context, ElementId, EventEmitter, IsZero, Pixels, Window, px,
+    px, Along, App, Axis, Bounds, Context, ElementId, EventEmitter, IsZero, Pixels, Window,
 };
 
 use crate::PixelsExt;
@@ -52,6 +52,16 @@ impl Default for ResizableState {
 }
 
 impl ResizableState {
+    /// Create a ResizableState with initial sizes for panels.
+    pub fn with_sizes(sizes: Vec<Pixels>) -> Self {
+        let panel_count = sizes.len();
+        Self {
+            sizes,
+            panels: vec![ResizablePanelState::default(); panel_count],
+            ..Default::default()
+        }
+    }
+
     /// Get the size of the panels.
     pub fn sizes(&self) -> &Vec<Pixels> {
         &self.sizes
@@ -105,7 +115,8 @@ impl ResizableState {
             let diff = panels_count - self.panels.len();
             self.panels
                 .extend(vec![ResizablePanelState::default(); diff]);
-            self.sizes.extend(vec![PANEL_MIN_SIZE; diff]);
+            let default_size = self.sizes.last().copied().unwrap_or(PANEL_MIN_SIZE);
+            self.sizes.extend(vec![default_size; diff]);
             changed = true;
         }
 
@@ -115,8 +126,7 @@ impl ResizableState {
             changed = true;
         }
 
-        if changed {
-            // We need to make sure the total size is in line with the container size.
+        if changed && !self.sizes.is_empty() && self.panels.len() == panels_count {
             self.adjust_to_container_size(cx);
         }
     }
